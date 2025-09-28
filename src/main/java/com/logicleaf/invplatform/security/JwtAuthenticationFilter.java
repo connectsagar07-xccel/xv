@@ -1,8 +1,6 @@
 package com.logicleaf.invplatform.security;
 
 import com.logicleaf.invplatform.dao.UserRepository;
-import com.logicleaf.invplatform.model.User;
-import com.logicleaf.invplatform.service.JwtService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpHeaders;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;

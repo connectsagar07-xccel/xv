@@ -4,7 +4,7 @@ import com.logicleaf.invplatform.dao.RefreshTokenRepository;
 import com.logicleaf.invplatform.dao.UserRepository;
 import com.logicleaf.invplatform.model.RefreshToken;
 import com.logicleaf.invplatform.model.User;
-import com.logicleaf.invplatform.service.JwtService;
+import com.logicleaf.invplatform.security.JwtService;
 import com.logicleaf.invplatform.service.RefreshTokenService;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;

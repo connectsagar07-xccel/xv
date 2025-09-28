@@ -1,4 +1,4 @@
-package com.logicleaf.invplatform.service;
+package com.logicleaf.invplatform.security;
 
 import io.jsonwebtoken.*;
 import io.jsonwebtoken.security.Keys;
