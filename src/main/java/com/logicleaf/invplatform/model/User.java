@@ -2,10 +2,8 @@ package com.logicleaf.invplatform.model;
 
 import lombok.*;
 import org.springframework.data.annotation.Id;
+import org.springframework.data.mongodb.core.index.Indexed;
 import org.springframework.data.mongodb.core.mapping.Document;
-
-import java.time.Instant;
-import java.util.Set;
 
 @Data
 @Builder
@@ -15,13 +13,21 @@ import java.util.Set;
 public class User {
     @Id
     private String id;
-    private String username; // can be derived or same as email local-part
+
     private String name;
+
+    @Indexed(unique = true)
     private String email;
-    private String phone;
+
+    private String phoneNumber;
+
     private String password;
-    private Set<String> roles;
-    private String otp;
-    private Instant otpExpiry;
-    private boolean otpVerified;
+
+    private String role; // e.g., "FOUNDER", "INVESTOR"
+
+    @Builder.Default
+    private boolean isVerified = false;
+
+    @Builder.Default
+    private boolean profileCompleted = false;
 }

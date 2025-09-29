@@ -1,11 +1,12 @@
 package com.logicleaf.invplatform.security;
 
-import com.logicleaf.invplatform.dao.UserRepository;
+import com.logicleaf.invplatform.config.UserDetailsServiceImpl;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpHeaders;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.ReactiveSecurityContextHolder;
 import org.springframework.security.core.context.SecurityContextImpl;
+import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.stereotype.Component;
 import org.springframework.web.server.ServerWebExchange;
 import org.springframework.web.server.WebFilter;
@@ -17,7 +18,7 @@ import reactor.core.publisher.Mono;
 public class JwtAuthenticationFilter implements WebFilter {
 
     private final JwtService jwtService;
-    private final UserRepository userRepository;
+    private final UserDetailsServiceImpl userDetailsService;
 
     @Override
     public Mono<Void> filter(ServerWebExchange exchange, WebFilterChain chain) {
@@ -28,26 +29,30 @@ public class JwtAuthenticationFilter implements WebFilter {
         }
 
         String token = authHeader.substring(7);
-        String username;
+        String email;
         try {
-            username = jwtService.extractUsername(token);
+            email = jwtService.extractEmail(token);
         } catch (Exception e) {
-            return chain.filter(exchange);
+            return chain.filter(exchange); // Invalid token, proceed without authentication
         }
 
-        return userRepository.findByUsername(username)
-                .flatMap(user -> {
-                    if (jwtService.isTokenValid(token, username)) {
-                        UsernamePasswordAuthenticationToken authentication =
-                                new UsernamePasswordAuthenticationToken(user.getUsername(), null, null);
+        if (email != null) {
+            Mono<UserDetails> userDetailsMono = userDetailsService.loadUserByUsername(email);
 
-                        return chain.filter(exchange)
-                                .contextWrite(ReactiveSecurityContextHolder.withSecurityContext(
-                                        Mono.just(new SecurityContextImpl(authentication))
-                                ));
-                    }
-                    return chain.filter(exchange);
-                })
-                .switchIfEmpty(chain.filter(exchange));
+            return userDetailsMono.flatMap(userDetails -> {
+                if (jwtService.isTokenValid(token, userDetails.getUsername())) { // getUsername() will return the email
+                    UsernamePasswordAuthenticationToken authentication =
+                            new UsernamePasswordAuthenticationToken(userDetails, null, userDetails.getAuthorities());
+
+                    return chain.filter(exchange)
+                            .contextWrite(ReactiveSecurityContextHolder.withSecurityContext(
+                                    Mono.just(new SecurityContextImpl(authentication))
+                            ));
+                }
+                return chain.filter(exchange);
+            }).switchIfEmpty(chain.filter(exchange)); // If user not found, continue without auth
+        }
+
+        return chain.filter(exchange);
     }
 }
