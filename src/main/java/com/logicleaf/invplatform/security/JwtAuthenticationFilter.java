@@ -37,7 +37,7 @@ public class JwtAuthenticationFilter implements WebFilter {
         }
 
         if (email != null) {
-            Mono<UserDetails> userDetailsMono = userDetailsService.loadUserByUsername(email);
+            Mono<UserDetails> userDetailsMono = userDetailsService.findByUsername(email);
 
             return userDetailsMono.flatMap(userDetails -> {
                 if (jwtService.isTokenValid(token, userDetails.getUsername())) { // getUsername() will return the email
