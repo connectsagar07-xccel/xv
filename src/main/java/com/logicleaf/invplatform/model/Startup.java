@@ -2,6 +2,7 @@ package com.logicleaf.invplatform.model;
 
 import lombok.*;
 import org.springframework.data.annotation.Id;
+import org.springframework.data.mongodb.core.index.Indexed;
 import org.springframework.data.mongodb.core.mapping.Document;
 
 import java.math.BigDecimal;
@@ -15,14 +16,14 @@ public class Startup {
     @Id
     private String id;
 
-    private String founderId;     // user.id of the founder
-    private String startupName;
-    private String sector;        // one of predefined sectors
-    private String stage;         // e.g., Seed, Series A
-    private BigDecimal fundingRaised;
-    private String hqLocation;
-    private Integer teamSize;
-    private String website;
+    @Indexed(unique = true)
+    private String userId; // Link to the User
 
-    private String status;        // e.g., PROFILE_COMPLETED or INCOMPLETE
+    private String startupName;
+    private String sector;
+    private String stage;
+    private String fundingRaised;
+    private String hqLocation;
+    private int teamSize;
+    private String website;
 }
