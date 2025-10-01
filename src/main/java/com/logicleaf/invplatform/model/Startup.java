@@ -19,6 +19,7 @@ public class Startup {
     @Indexed(unique = true)
     private String userId; // Link to the User
 
+    private String companyName;
     private String startupName;
     private String sector;
     private String stage;
@@ -26,4 +27,5 @@ public class Startup {
     private String hqLocation;
     private int teamSize;
     private String website;
+    private String status;
 }
