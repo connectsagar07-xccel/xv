@@ -5,13 +5,14 @@ import com.logicleaf.invplatform.dao.UserRepository;
 import com.logicleaf.invplatform.model.RefreshToken;
 import com.logicleaf.invplatform.model.User;
 import com.logicleaf.invplatform.security.JwtService;
-import com.logicleaf.invplatform.service.OtpService;
+import com.logicleaf.invplatform.service.AuthService;
 import com.logicleaf.invplatform.service.RefreshTokenService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotEmpty;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
@@ -29,7 +30,7 @@ public class AuthController {
     private final JwtService jwtService;
     private final RefreshTokenService refreshTokenService;
     private final RefreshTokenRepository refreshTokenRepository;
-    private final OtpService otpService;
+    private final AuthService authService;
 
     @PostMapping("/signup/founder")
     public Mono<ResponseEntity<Map<String, String>>> signupFounder(@Valid @RequestBody SignUpRequest request) {
@@ -42,87 +43,65 @@ public class AuthController {
     }
 
     private Mono<ResponseEntity<Map<String, String>>> signup(SignUpRequest request, String role) {
-        return userRepository.existsByEmail(request.getEmail())
-                .flatMap(exists -> {
-                    if (exists) {
-                        return Mono.just(ResponseEntity.badRequest().body(Map.of("error", "Email already taken")));
-                    }
-
-                    User user = User.builder()
-                            .name(request.getName())
-                            .email(request.getEmail())
-                            .phoneNumber(request.getPhoneNumber())
-                            .password(passwordEncoder.encode(request.getPassword()))
-                            .role(role)
-                            .build(); // isVerified and profileCompleted default to false
-
-                    return userRepository.save(user)
-                            .then(otpService.generateAndSendOtp(user.getEmail()))
-                            .thenReturn(ResponseEntity.ok(Map.of("message", "OTP has been sent to your email.")));
-                });
+        return authService.registerUser(request, role)
+                .map(user -> ResponseEntity.ok(Map.of("message", "OTP has been sent to your email.")))
+                .onErrorResume(IllegalArgumentException.class, e ->
+                        Mono.just(ResponseEntity.badRequest().body(Map.of("error", e.getMessage()))));
     }
 
-    @PostMapping("/verify")
+    @PostMapping("/verify-otp")
     public Mono<ResponseEntity<Map<String, String>>> verifyOtp(@Valid @RequestBody OtpVerificationRequest request) {
-        return otpService.verifyOtp(request.getEmail(), request.getCode())
-                .flatMap(isValid -> {
-                    if (!isValid) {
-                        return Mono.just(ResponseEntity.badRequest().body(Map.of("error", "Invalid or expired OTP.")));
-                    }
-
-                    return userRepository.findByEmail(request.getEmail())
-                            .flatMap(user -> {
-                                user.setVerified(true);
-                                return userRepository.save(user);
-                            })
-                            .flatMap(savedUser -> {
-                                String accessToken = jwtService.generateToken(savedUser.getEmail());
-                                RefreshToken refreshToken = refreshTokenService.createRefreshToken(savedUser.getId());
-                                return Mono.just(ResponseEntity.ok(Map.of(
-                                        "accessToken", accessToken,
-                                        "refreshToken", refreshToken.getToken()
-                                )));
-                            })
-                            .switchIfEmpty(Mono.just(ResponseEntity.status(404).body(Map.of("error", "User not found after OTP verification."))));
-                });
+        return authService.verifyOtp(request.getEmail(), request.getCode())
+                .flatMap(verifiedUser -> {
+                    String accessToken = jwtService.generateToken(verifiedUser.getEmail());
+                    return refreshTokenService.createRefreshToken(verifiedUser.getId())
+                            .map(refreshToken -> ResponseEntity.ok(Map.of(
+                                    "accessToken", accessToken,
+                                    "refreshToken", refreshToken.getToken()
+                            )));
+                })
+                .onErrorResume(IllegalArgumentException.class, e ->
+                        Mono.just(ResponseEntity.badRequest().body(Map.of("error", e.getMessage()))));
     }
 
     @PostMapping("/login")
-    public ResponseEntity<Map<String, String>> login(@RequestBody LoginRequest request) {
-        User user = userRepository.findByEmail(request.getEmail()).block();
-        if (user == null || !passwordEncoder.matches(request.getPassword(), user.getPassword())) {
-            return ResponseEntity.status(401).body(Map.of("error", "Invalid credentials"));
-        }
+    public Mono<ResponseEntity<Map<String, String>>> login(@RequestBody LoginRequest request) {
+        return userRepository.findByEmail(request.getEmail())
+                .flatMap(user -> {
+                    if (!passwordEncoder.matches(request.getPassword(), user.getPassword())) {
+                        return Mono.just(ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("error", "Invalid credentials")));
+                    }
+                    if (!user.isVerified()) {
+                        return Mono.just(ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("error", "Account not verified. Please complete the OTP verification.")));
+                    }
 
-        if (!user.isVerified()) {
-            return ResponseEntity.status(403).body(Map.of("error", "Account not verified. Please complete the OTP verification."));
-        }
-
-        String accessToken = jwtService.generateToken(user.getEmail());
-        RefreshToken refreshToken = refreshTokenService.createRefreshToken(user.getId());
-
-        return ResponseEntity.ok(Map.of(
-                "accessToken", accessToken,
-                "refreshToken", refreshToken.getToken()
-        ));
+                    String accessToken = jwtService.generateToken(user.getEmail());
+                    return refreshTokenService.createRefreshToken(user.getId())
+                            .map(refreshToken -> ResponseEntity.ok(Map.of(
+                                    "accessToken", accessToken,
+                                    "refreshToken", refreshToken.getToken()
+                            )));
+                })
+                .defaultIfEmpty(ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("error", "Invalid credentials")));
     }
 
     @PostMapping("/refresh")
-    public ResponseEntity<Map<String, String>> refresh(@RequestBody RefreshRequest request) {
-        RefreshToken token = refreshTokenRepository.findByToken(request.getRefreshToken()).block();
-        if (token == null || !refreshTokenService.validateRefreshToken(token)) {
-            return ResponseEntity.status(401).body(Map.of("error", "Invalid or expired refresh token"));
-        }
-
-        User user = userRepository.findById(token.getUserId()).block();
-        if (user == null) {
-            return ResponseEntity.status(404).body(Map.of("error", "User not found"));
-        }
-
-        // create new access token (we could rotate refresh token if desired)
-        String newAccess = jwtService.generateToken(user.getEmail());
-        return ResponseEntity.ok(Map.of("accessToken", newAccess));
+    public Mono<ResponseEntity<Map<String, String>>> refresh(@RequestBody RefreshRequest request) {
+        return refreshTokenService.findByToken(request.getRefreshToken())
+                .flatMap(refreshToken -> {
+                    if (!refreshTokenService.isTokenValid(refreshToken)) {
+                        return Mono.just(ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("error", "Invalid or expired refresh token")));
+                    }
+                    return userRepository.findById(refreshToken.getUserId())
+                            .map(user -> {
+                                String newAccessToken = jwtService.generateToken(user.getEmail());
+                                return ResponseEntity.ok(Map.of("accessToken", newAccessToken));
+                            })
+                            .defaultIfEmpty(ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("error", "User not found")));
+                })
+                .defaultIfEmpty(ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("error", "Invalid or expired refresh token")));
     }
+
 
     @Data
     public static class SignUpRequest {

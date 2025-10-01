@@ -36,6 +36,7 @@ public class OnboardingController {
                 .flatMap(user -> {
                     Startup startup = Startup.builder()
                             .userId(user.getId())
+                            .companyName(request.getCompanyName())
                             .startupName(request.getStartupName())
                             .sector(request.getSector())
                             .stage(request.getStage())
@@ -43,6 +44,7 @@ public class OnboardingController {
                             .hqLocation(request.getHqLocation())
                             .teamSize(request.getTeamSize())
                             .website(request.getWebsite())
+                            .status("Profile Completed")
                             .build();
 
                     return startupRepository.save(startup)
@@ -87,6 +89,8 @@ public class OnboardingController {
 
     @Data
     public static class FounderProfileRequest {
+        @NotEmpty
+        private String companyName;
         @NotEmpty
         private String startupName;
         @NotEmpty
