@@ -1,45 +1,52 @@
 package com.logicleaf.invplatform.service;
 
-import com.logicleaf.invplatform.dao.RefreshTokenRepository;
 import com.logicleaf.invplatform.model.RefreshToken;
-import lombok.RequiredArgsConstructor;
+import com.logicleaf.invplatform.repository.RefreshTokenRepository;
+import com.logicleaf.invplatform.repository.UserRepository;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
-import reactor.core.publisher.Mono;
 
 import java.time.Instant;
+import java.util.Optional;
 import java.util.UUID;
 
 @Service
-@RequiredArgsConstructor
 public class RefreshTokenService {
 
-    private final RefreshTokenRepository refreshTokenRepository;
+    @Value("${jwt.refresh.expiration}")
+    private Long refreshTokenDurationMs;
 
-    @Value("${jwt.refresh-expiration-ms:2592000000}") // default 30 days
-    private long refreshExpirationMs;
+    @Autowired
+    private RefreshTokenRepository refreshTokenRepository;
 
-    public Mono<RefreshToken> findByToken(String token) {
+    @Autowired
+    private UserRepository userRepository;
+
+    public Optional<RefreshToken> findByToken(String token) {
         return refreshTokenRepository.findByToken(token);
     }
 
-    public Mono<RefreshToken> createRefreshToken(String userId) {
-        return refreshTokenRepository.deleteByUserId(userId)
-                .then(Mono.defer(() -> {
-                    RefreshToken token = RefreshToken.builder()
-                            .userId(userId)
-                            .token(UUID.randomUUID().toString())
-                            .expiryDate(Instant.now().plusMillis(refreshExpirationMs))
-                            .build();
-                    return refreshTokenRepository.save(token);
-                }));
+    public RefreshToken createRefreshToken(String userId) {
+        RefreshToken refreshToken = new RefreshToken();
+
+        refreshToken.setUserId(userId);
+        refreshToken.setExpiryDate(Instant.now().plusMillis(refreshTokenDurationMs));
+        refreshToken.setToken(UUID.randomUUID().toString());
+
+        refreshToken = refreshTokenRepository.save(refreshToken);
+        return refreshToken;
     }
 
-    public boolean isTokenValid(RefreshToken token) {
-        return token != null && token.getExpiryDate().isAfter(Instant.now());
+    public RefreshToken verifyExpiration(RefreshToken token) {
+        if (token.getExpiryDate().compareTo(Instant.now()) < 0) {
+            refreshTokenRepository.delete(token);
+            throw new RuntimeException("Refresh token was expired. Please make a new signin request");
+        }
+        return token;
     }
 
-    public Mono<Void> deleteByUserId(String userId) {
-        return refreshTokenRepository.deleteByUserId(userId);
+    public void deleteByUserId(String userId) {
+        refreshTokenRepository.deleteByUserId(userId);
     }
 }

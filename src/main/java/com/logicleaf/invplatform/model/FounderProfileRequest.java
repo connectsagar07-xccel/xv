@@ -1,22 +1,15 @@
 package com.logicleaf.invplatform.model;
 
-import org.springframework.data.annotation.Id;
-import org.springframework.data.mongodb.core.mapping.Document;
-import java.util.List;
-import lombok.Data;
-import lombok.Builder;
-import lombok.NoArgsConstructor;
 import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
 
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-@Document(collection = "startups")
-public class Startup {
-    @Id
-    private String id;
-    private String userId;
+public class FounderProfileRequest {
     private String companyName;
     private String startupName;
     private String sector;
@@ -25,5 +18,4 @@ public class Startup {
     private String hqLocation;
     private Integer teamSize;
     private String website;
-    private String status;
 }

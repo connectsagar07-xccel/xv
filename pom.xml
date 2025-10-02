@@ -36,7 +36,7 @@
 		</dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-data-mongodb-reactive</artifactId>
+            <artifactId>spring-boot-starter-data-mongodb</artifactId>
         </dependency>
         <dependency>
 			<groupId>org.springframework.boot</groupId>
@@ -51,10 +51,6 @@
 			<artifactId>camel-spring-boot-starter</artifactId>
 			<version>4.14.0</version>
 		</dependency>
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-webflux</artifactId>
-        </dependency>
 
         <dependency>
 			<groupId>org.springframework.boot</groupId>
@@ -77,11 +73,6 @@
 			<artifactId>spring-security-test</artifactId>
 			<scope>test</scope>
 		</dependency>
-        <dependency>
-            <groupId>io.projectreactor</groupId>
-            <artifactId>reactor-test</artifactId>
-            <scope>test</scope>
-        </dependency>
 
         <dependency>
             <groupId>jakarta.annotation</groupId>
@@ -164,11 +155,11 @@
                         <configuration>
                             <inputSpec>${project.basedir}/src/main/resources/openapi/expenses.yml</inputSpec>
                             <generatorName>java</generatorName>
-                            <library>webclient</library> <!-- Reactive WebClient -->
+                            <library>resttemplate</library>
                             <output>${project.build.directory}/generated-sources/zoho-expenses</output>
-                            <apiPackage>com.invplatform.generated.expenses.api</apiPackage>
-                            <modelPackage>com.invplatform.generated.expenses.model</modelPackage>
-                            <invokerPackage>com.invplatform.generated.expenses.invoker</invokerPackage>
+                            <apiPackage>com.logicleaf.invplatform.generated.expenses.api</apiPackage>
+                            <modelPackage>com.logicleaf.invplatform.generated.expenses.model</modelPackage>
+                            <invokerPackage>com.logicleaf.invplatform.generated.expenses.invoker</invokerPackage>
                             <configOptions>
                                 <dateLibrary>java8</dateLibrary>
                                 <interfaceOnly>true</interfaceOnly>
@@ -184,11 +175,11 @@
                         <configuration>
                             <inputSpec>${project.basedir}/src/main/resources/openapi/sales-order.yml</inputSpec>
                             <generatorName>java</generatorName>
-                            <library>webclient</library>
+                            <library>resttemplate</library>
                             <output>${project.build.directory}/generated-sources/zoho-salesorder</output>
-                            <apiPackage>com.invplatform.generated.salesorder.api</apiPackage>
-                            <modelPackage>com.invplatform.generated.salesorder.model</modelPackage>
-                            <invokerPackage>com.invplatform.generated.salesorder.invoker</invokerPackage>
+                            <apiPackage>com.logicleaf.invplatform.generated.salesorder.api</apiPackage>
+                            <modelPackage>com.logicleaf.invplatform.generated.salesorder.model</modelPackage>
+                            <invokerPackage>com.logicleaf.invplatform.generated.salesorder.invoker</invokerPackage>
                             <configOptions>
                                 <dateLibrary>java8</dateLibrary>
                                 <interfaceOnly>true</interfaceOnly>

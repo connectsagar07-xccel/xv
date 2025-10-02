@@ -1,138 +1,123 @@
 package com.logicleaf.invplatform.controller;
 
-import com.logicleaf.invplatform.model.RefreshToken;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.logicleaf.invplatform.exception.DuplicateEmailException;
+import com.logicleaf.invplatform.model.JwtAuthenticationResponse;
+import com.logicleaf.invplatform.model.LoginRequest;
+import com.logicleaf.invplatform.model.Role;
+import com.logicleaf.invplatform.model.SignUpRequest;
 import com.logicleaf.invplatform.model.User;
-import com.logicleaf.invplatform.security.JwtService;
-import com.logicleaf.invplatform.config.SecurityConfig;
-import com.logicleaf.invplatform.config.UserDetailsServiceImpl;
-import com.logicleaf.invplatform.model.RefreshToken;
-import com.logicleaf.invplatform.model.User;
-import com.logicleaf.invplatform.security.JwtService;
+import com.logicleaf.invplatform.model.VerifyOtpRequest;
 import com.logicleaf.invplatform.service.AuthService;
-import com.logicleaf.invplatform.service.RefreshTokenService;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.reactive.WebFluxTest;
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
-import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
-import org.springframework.security.crypto.password.PasswordEncoder;
-import org.springframework.test.web.reactive.server.WebTestClient;
-import reactor.core.publisher.Mono;
-
-import java.time.Instant;
-import java.util.UUID;
+import org.springframework.test.web.servlet.MockMvc;
 
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@WebFluxTest(AuthController.class)
-@Import({SecurityConfig.class, JwtService.class})
-class AuthControllerTest {
+@SpringBootTest
+@AutoConfigureMockMvc
+public class AuthControllerTest {
 
     @Autowired
-    private WebTestClient webTestClient;
+    private MockMvc mockMvc;
+
+    @Autowired
+    private ObjectMapper objectMapper;
 
     @MockBean
     private AuthService authService;
 
-    @MockBean
-    private RefreshTokenService refreshTokenService;
+    private SignUpRequest signUpRequest;
+    private LoginRequest loginRequest;
 
-    @MockBean
-    private UserDetailsServiceImpl userDetailsService;
-
-    @MockBean
-    private com.logicleaf.invplatform.dao.UserRepository userRepository;
-
-    @MockBean
-    private com.logicleaf.invplatform.dao.RefreshTokenRepository refreshTokenRepository;
-
-    @Autowired
-    private JwtService jwtService;
-
-    @Autowired
-    private PasswordEncoder passwordEncoder;
-
-    @Test
-    void signupFounder_Success() {
-        User user = new User();
-        user.setEmail("founder@example.com");
-
-        when(authService.registerUser(any(), anyString())).thenReturn(Mono.just(user));
-
-        webTestClient.post().uri("/api/auth/signup/founder")
-                .contentType(MediaType.APPLICATION_JSON)
-                .bodyValue("{\"name\":\"test\",\"email\":\"founder@example.com\",\"password\":\"pass\",\"phoneNumber\":\"123\"}")
-                .exchange()
-                .expectStatus().isOk()
-                .expectBody()
-                .jsonPath("$.message").isEqualTo("OTP has been sent to your email.");
+    @BeforeEach
+    void setUp() {
+        signUpRequest = new SignUpRequest("Test User", "test@example.com", "1234567890", "password");
+        loginRequest = new LoginRequest("test@example.com", "password");
     }
 
     @Test
-    void verifyOtp_Success() {
-        User user = User.builder().id("1").email("test@example.com").build();
-        RefreshToken refreshToken = RefreshToken.builder().token(UUID.randomUUID().toString()).build();
+    void testSignupFounder_Success() throws Exception {
+        User user = User.builder().name("Test User").email("test@example.com").verified(false).build();
+        when(authService.signup(any(SignUpRequest.class), any(Role.class))).thenReturn(user);
 
-        when(authService.verifyOtp(anyString(), anyString())).thenReturn(Mono.just(user));
-        when(refreshTokenService.createRefreshToken(anyString())).thenReturn(Mono.just(refreshToken));
-
-        webTestClient.post().uri("/api/auth/verify-otp")
-                .contentType(MediaType.APPLICATION_JSON)
-                .bodyValue("{\"email\":\"test@example.com\",\"code\":\"123456\"}")
-                .exchange()
-                .expectStatus().isOk()
-                .expectBody()
-                .jsonPath("$.accessToken").isNotEmpty()
-                .jsonPath("$.refreshToken").isNotEmpty();
+        mockMvc.perform(post("/api/auth/signup/founder")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(signUpRequest)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$").value("Founder registered successfully. Please check your email for OTP."));
     }
 
     @Test
-    void login_Success() {
-        User user = User.builder()
-                .id("1")
-                .email("test@example.com")
-                .password(passwordEncoder.encode("password"))
-                .isVerified(true)
-                .role("FOUNDER")
-                .build();
-        RefreshToken refreshToken = RefreshToken.builder().token(UUID.randomUUID().toString()).build();
+    void testSignupFounder_DuplicateEmail() throws Exception {
+        when(authService.signup(any(SignUpRequest.class), any(Role.class)))
+                .thenThrow(new DuplicateEmailException("Email address test@example.com is already in use."));
 
-        when(userDetailsService.findByUsername("test@example.com")).thenReturn(Mono.just(user));
-        when(userRepository.findByEmail("test@example.com")).thenReturn(Mono.just(user));
-        when(refreshTokenService.createRefreshToken("1")).thenReturn(Mono.just(refreshToken));
+        mockMvc.perform(post("/api/auth/signup/founder")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(signUpRequest)))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.message").value("Email address test@example.com is already in use."));
+    }
 
-        webTestClient.post().uri("/api/auth/login")
-                .contentType(MediaType.APPLICATION_JSON)
-                .bodyValue("{\"email\":\"test@example.com\",\"password\":\"password\"}")
-                .exchange()
-                .expectStatus().isOk()
-                .expectBody()
-                .jsonPath("$.accessToken").isNotEmpty()
-                .jsonPath("$.refreshToken").isNotEmpty();
+
+    @Test
+    void testLogin_Success() throws Exception {
+        JwtAuthenticationResponse response = new JwtAuthenticationResponse("test-token", "test-refresh-token");
+        when(authService.login(any(LoginRequest.class))).thenReturn(response);
+
+        mockMvc.perform(post("/api/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(loginRequest)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.token").value("test-token"))
+                .andExpect(jsonPath("$.refreshToken").value("test-refresh-token"));
     }
 
     @Test
-    void refresh_Success() {
-        User user = User.builder().id("1").email("test@example.com").build();
-        RefreshToken refreshToken = RefreshToken.builder()
-                .userId("1")
-                .token(UUID.randomUUID().toString())
-                .expiryDate(Instant.now().plusMillis(100000))
-                .build();
+    void testLogin_Unverified() throws Exception {
+        when(authService.login(any(LoginRequest.class)))
+                .thenThrow(new IllegalStateException("User account is not verified. Please verify your OTP."));
 
-        when(refreshTokenService.findByToken(anyString())).thenReturn(Mono.just(refreshToken));
-        when(refreshTokenService.isTokenValid(any())).thenReturn(true);
-        when(userRepository.findById("1")).thenReturn(Mono.just(user));
+        mockMvc.perform(post("/api/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(loginRequest)))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.message").value("User account is not verified. Please verify your OTP."));
+    }
 
-        webTestClient.post().uri("/api/auth/refresh")
-                .contentType(MediaType.APPLICATION_JSON)
-                .bodyValue("{\"refreshToken\":\"" + refreshToken.getToken() + "\"}")
-                .exchange()
-                .expectStatus().isOk()
-                .expectBody()
-                .jsonPath("$.accessToken").isNotEmpty();
+
+    @Test
+    void testVerifyOtp_Success() throws Exception {
+        VerifyOtpRequest verifyOtpRequest = new VerifyOtpRequest("test@example.com", "123456");
+        when(authService.verifyOtp(any(VerifyOtpRequest.class))).thenReturn(true);
+
+        mockMvc.perform(post("/api/auth/verify-otp")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(verifyOtpRequest)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$").value("OTP verified successfully. You can now log in."));
+    }
+
+    @Test
+    void testVerifyOtp_Failure() throws Exception {
+        VerifyOtpRequest verifyOtpRequest = new VerifyOtpRequest("test@example.com", "wrong-otp");
+        when(authService.verifyOtp(any(VerifyOtpRequest.class))).thenReturn(false);
+
+        mockMvc.perform(post("/api/auth/verify-otp")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(verifyOtpRequest)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$").value("Invalid or expired OTP."));
     }
 }

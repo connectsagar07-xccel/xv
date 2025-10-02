@@ -1,16 +1,18 @@
 package com.logicleaf.invplatform.model;
 
-import lombok.*;
 import org.springframework.data.annotation.Id;
-import org.springframework.data.mongodb.core.index.Indexed;
 import org.springframework.data.mongodb.core.mapping.Document;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
 
-import java.time.Instant;
+import java.time.LocalDateTime;
 import java.util.Collection;
 import java.util.List;
+import lombok.Data;
+import lombok.Builder;
+import lombok.NoArgsConstructor;
+import lombok.AllArgsConstructor;
 
 @Data
 @Builder
@@ -20,31 +22,18 @@ import java.util.List;
 public class User implements UserDetails {
     @Id
     private String id;
-
     private String name;
-
-    @Indexed(unique = true)
     private String email;
-
-    private String phoneNumber;
-
+    private String phone;
     private String password;
-
-    private String role; // e.g., "FOUNDER", "INVESTOR"
-
+    private Role role;
     private String otpCode;
-
-    private Instant otpExpiry;
-
-    @Builder.Default
-    private boolean isVerified = false;
-
-    @Builder.Default
-    private boolean profileCompleted = false;
+    private LocalDateTime otpExpiry;
+    private boolean verified;
 
     @Override
     public Collection<? extends GrantedAuthority> getAuthorities() {
-        return List.of(new SimpleGrantedAuthority("ROLE_" + role));
+        return List.of(new SimpleGrantedAuthority(role.name()));
     }
 
     @Override
@@ -69,6 +58,6 @@ public class User implements UserDetails {
 
     @Override
     public boolean isEnabled() {
-        return isVerified;
+        return verified;
     }
 }
