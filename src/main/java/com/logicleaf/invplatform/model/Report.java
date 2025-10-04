@@ -11,16 +11,13 @@ import org.springframework.data.mongodb.core.mapping.Document;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-@Document(collection = "users")
-public class User {
+@Document(collection = "reports")
+public class Report {
     @Id
     private String id;
-    private String name;
-    private String email;
-    private String phone;
-    private String passwordHash;
-    private Role role;
-    private boolean isVerified; // To track if the user has completed OTP verification
-    private String otp;
-    private java.time.LocalDateTime otpExpiryTime;
+    private String startupId;
+    private String period; // e.g., "Monthly", "Quarterly"
+    private String dataJSON;
+    private String pdfUrl;
+    private boolean visibility;
 }

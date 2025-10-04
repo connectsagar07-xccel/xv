@@ -1,94 +1,94 @@
 package com.logicleaf.invplatform.service;
 
-import com.logicleaf.invplatform.model.OAuthToken;
-import lombok.RequiredArgsConstructor;
+import com.logicleaf.invplatform.model.Startup;
+import com.logicleaf.invplatform.model.User;
+import com.logicleaf.invplatform.repository.StartupRepository;
+import com.logicleaf.invplatform.repository.UserRepository;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.*;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
+import org.springframework.util.LinkedMultiValueMap;
+import org.springframework.util.MultiValueMap;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import com.fasterxml.jackson.databind.JsonNode;
 
-import java.time.Instant;
-import java.util.Map;
+
+import java.time.LocalDateTime;
 
 @Service
-@RequiredArgsConstructor
 public class ZohoService {
 
-    private final RestTemplate restTemplate = new RestTemplate();
+    @Value("${ZOHO_CLIENT_ID}")
+    private String zohoClientId;
 
-    @Value("${zoho.client-id}")
-    private String clientId;
+    @Value("${ZOHO_CLIENT_SECRET}")
+    private String zohoClientSecret;
 
-    @Value("${zoho.client-secret}")
-    private String clientSecret;
+    @Value("${ZOHO_REDIRECT_URI}")
+    private String zohoRedirectUri;
 
-    @Value("${zoho.token-url}")
-    private String tokenUrl;
+    @Autowired
+    private StartupRepository startupRepository;
 
-    @Value("${zoho.redirect-uri}")
-    private String redirectUri;
+    @Autowired
+    private UserRepository userRepository;
 
-    // keep the token in-memory for MVP (in real world: store in DB)
-    private OAuthToken currentToken;
+    private static final String ZOHO_AUTH_URL = "https://accounts.zoho.com/oauth/v2/auth";
+    private static final String ZOHO_TOKEN_URL = "https://accounts.zoho.com/oauth/v2/token";
 
-    public String exchangeCodeForToken(String code, String accountsServer) {
-        String endpoint = deriveTokenEndpoint(accountsServer, null);
+    public String getZohoAuthUrl(String userEmail) {
+        // We pass the user's email as state to identify them on callback
+        return ZOHO_AUTH_URL + "?response_type=code&client_id=" + zohoClientId +
+               "&scope=ZohoExpenses.fullaccess.all,ZohoBooks.fullaccess.all&redirect_uri=" + zohoRedirectUri +
+               "&access_type=offline&prompt=consent&state=" + userEmail;
+    }
 
+    public void handleZohoCallback(String code, String state) {
+        String userEmail = state; // The user's email we passed in the auth URL
+
+        User user = userRepository.findByEmail(userEmail)
+            .orElseThrow(() -> new RuntimeException("User not found for state: " + userEmail));
+
+        Startup startup = startupRepository.findByFounderUserId(user.getId())
+                .orElseThrow(() -> new RuntimeException("Startup profile not found for user: " + userEmail));
+
+        RestTemplate restTemplate = new RestTemplate();
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
 
-        String body = "grant_type=authorization_code" +
-                "&client_id=" + clientId +
-                "&client_secret=" + clientSecret +
-                "&redirect_uri=" + redirectUri +
-                "&code=" + code;
+        MultiValueMap<String, String> map = new LinkedMultiValueMap<>();
+        map.add("code", code);
+        map.add("client_id", zohoClientId);
+        map.add("client_secret", zohoClientSecret);
+        map.add("redirect_uri", zohoRedirectUri);
+        map.add("grant_type", "authorization_code");
 
-        HttpEntity<String> entity = new HttpEntity<>(body, headers);
-        ResponseEntity<Map> resp = restTemplate.exchange(endpoint, HttpMethod.POST, entity, Map.class);
+        HttpEntity<MultiValueMap<String, String>> request = new HttpEntity<>(map, headers);
 
-        Map<String, Object> map = resp.getBody();
-        String accessToken = (String) map.get("access_token");
-        String refreshToken = (String) map.get("refresh_token");
-        String apiDomain = (String) map.get("api_domain");
-        Number expiresNum = (Number) map.get("expires_in");
+        JsonNode response = restTemplate.postForObject(ZOHO_TOKEN_URL, request, JsonNode.class);
 
-        currentToken = OAuthToken.builder()
-                .accessToken(accessToken)
-                .refreshToken(refreshToken)
-                .apiDomain(apiDomain)
-                .expiresAt(Instant.now().plusSeconds(expiresNum != null ? expiresNum.longValue() : 3600L))
-                .build();
+        if (response != null && response.has("access_token")) {
+            startup.setZohoAccessToken(response.get("access_token").asText());
+            if (response.has("refresh_token")) {
+                startup.setZohoRefreshToken(response.get("refresh_token").asText());
+            }
+            // Zoho token expiry is in seconds
+            long expiresIn = response.get("expires_in").asLong();
+            startup.setZohoTokenExpiryTime(LocalDateTime.now().plusSeconds(expiresIn));
 
-        return "OAuth successful! Token acquired.";
-    }
-
-    public String fetchSalesOrders() {
-        ensureValidToken();
-
-        String url = currentToken.getApiDomain() + "/books/v3/salesorders?organization_id=60047867322";
-
-        HttpHeaders headers = new HttpHeaders();
-        headers.setBearerAuth(currentToken.getAccessToken());
-
-        HttpEntity<Void> entity = new HttpEntity<>(headers);
-        ResponseEntity<String> resp = restTemplate.exchange(url, HttpMethod.GET, entity, String.class);
-
-        return resp.getBody();
-    }
-
-    private void ensureValidToken() {
-        if (currentToken == null || currentToken.getExpiresAt().isBefore(Instant.now())) {
-            throw new IllegalStateException("Token missing or expired. Please authorize again.");
+            startupRepository.save(startup);
+        } else {
+            throw new RuntimeException("Failed to get Zoho access token.");
         }
     }
 
-    private String deriveTokenEndpoint(String accountsServer, String apiDomain) {
-        if (accountsServer != null && !accountsServer.isBlank()) {
-            return accountsServer + (accountsServer.endsWith("/") ? "oauth/v2/token" : "/oauth/v2/token");
-        }
-        if (apiDomain != null && apiDomain.contains(".zohoapis.in")) {
-            return "https://accounts.zoho.in/oauth/v2/token";
-        }
-        return tokenUrl; // fallback from application.properties
+    // Placeholder for fetching metrics
+    public void fetchAndSaveMetrics(String startupId) {
+        // Logic to use the access token to call Zoho APIs will go here.
+        // This will involve checking if the token is expired and refreshing if needed.
+        // Then, use the OpenAPI generated clients to fetch data.
     }
 }
