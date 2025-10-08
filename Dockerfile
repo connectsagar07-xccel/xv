@@ -1,29 +1,33 @@
-# ---------- STAGE 1: Build ----------
-FROM eclipse-temurin:17-jdk-alpine AS builder
+# ---------- Stage 1: Build ----------
+FROM maven:3.9.9-eclipse-temurin-21 AS build
 
 # Set working directory
 WORKDIR /app
 
-# Copy Maven/Gradle config first to leverage caching
-COPY pom.xml mvnw ./
-COPY .mvn .mvn
-RUN ./mvnw dependency:go-offline -B
+# Copy only pom.xml first for caching dependencies
+COPY pom.xml .
+RUN mvn dependency:go-offline -B
 
-# Copy source and build the app
-COPY src src
-RUN ./mvnw clean package -DskipTests
+# Copy the rest of the project
+COPY src ./src
 
-# ---------- STAGE 2: Run ----------
-FROM eclipse-temurin:17-jre-alpine
+# Build the Spring Boot application (skip tests if needed)
+RUN mvn clean package -DskipTests
 
-# Set working directory
+# ---------- Stage 2: Run ----------
+FROM eclipse-temurin:21-jre-alpine AS runtime
+
+# Add a non-root user for security
+RUN addgroup -S spring && adduser -S spring -G spring
+USER spring:spring
+
 WORKDIR /app
 
-# Copy jar from builder
-COPY --from=builder /app/target/*.jar app.jar
+# Copy jar from build stage
+COPY --from=build /app/target/*.jar app.jar
 
 # Expose port (change if needed)
 EXPOSE 8080
 
-# Run the app
-ENTRYPOINT ["java", "-jar", "app.jar"]
+# Default command
+ENTRYPOINT ["java","-jar","app.jar"]
