@@ -57,7 +57,7 @@ public class SecurityConfig {
                 return config;
             })
             .and()
-            .csrf().disable();
+            .csrf().disable()
                 .exceptionHandling(exception -> exception.authenticationEntryPoint(unauthorizedHandler))
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(authorize -> authorize
