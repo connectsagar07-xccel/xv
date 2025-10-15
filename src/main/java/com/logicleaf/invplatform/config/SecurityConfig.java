@@ -42,34 +42,48 @@ public class SecurityConfig {
         return authenticationConfiguration.getAuthenticationManager();
     }
 
+        public SecurityConfig(JwtAuthenticationFilter jwtAuthenticationFilter, AuthEntryPointJwt unauthorizedHandler) {
+        this.jwtAuthenticationFilter = jwtAuthenticationFilter;
+        this.unauthorizedHandler = unauthorizedHandler;
+    }
+
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
-        http
-            .cors().configurationSource(request -> {
-                CorsConfiguration config = new CorsConfiguration();
-                config.setAllowedOrigins(Arrays.asList(
-                        "http://localhost:5173",
-                        "https://vkswkkgk0sgcgcgckk4oowos.82.25.110.102.sslip.io"
-                ));
-                config.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS"));
-                config.setAllowedHeaders(Arrays.asList("*"));
-                config.setAllowCredentials(true);
-                return config;
-            })
-            .and()
-            .csrf().disable()
-                .exceptionHandling(exception -> exception.authenticationEntryPoint(unauthorizedHandler))
-                .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-                .authorizeHttpRequests(authorize -> authorize
-                        .requestMatchers("/api/auth/**").permitAll()
-                        .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
-                        .anyRequest().authenticated()
-                );
 
-        // Add our custom JWT security filter
+        http
+            .csrf(csrf -> csrf.disable())
+            .cors(cors -> cors.configurationSource(corsConfigurationSource()))
+            .exceptionHandling(ex -> ex.authenticationEntryPoint(unauthorizedHandler))
+            .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+            .authorizeHttpRequests(auth -> auth
+                    .requestMatchers(
+                            "/api/auth/**",
+                            "/v3/api-docs/**",
+                            "/swagger-ui/**",
+                            "/swagger-ui.html"
+                    ).permitAll()
+                    .anyRequest().authenticated()
+            );
+
+        // Add your custom JWT filter
         http.addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
+    }
+
+    @Bean
+    public CorsConfigurationSource corsConfigurationSource() {
+        CorsConfiguration config = new CorsConfiguration();
+        config.setAllowedOrigins(Arrays.asList(
+                "http://localhost:5173",
+                "https://vkswkkgk0sgcgcgckk4oowos.82.25.110.102.sslip.io",
+                "*"
+        ));
+        config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
+        config.setAllowedHeaders(List.of("*"));
+        config.setAllowCredentials(true);
+
+        return request -> config;
     }
 
 
