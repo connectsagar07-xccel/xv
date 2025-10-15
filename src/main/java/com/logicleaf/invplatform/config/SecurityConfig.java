@@ -94,14 +94,14 @@ public class SecurityConfig {
         CorsConfiguration config = new CorsConfiguration();
 
         // ✅ Use patterns so that wildcard (*) works with credentials
-        config.setAllowedOriginPatterns(Arrays.asList(
-                "http://localhost:5173",
-                "https://vkswkkgk0sgcgcgckk4oowos.82.25.110.102.sslip.io",
-        ));
-
+        // config.setAllowedOriginPatterns(Arrays.asList(
+        //         "http://localhost:5173",
+        //         "https://vkswkkgk0sgcgcgckk4oowos.82.25.110.102.sslip.io",
+        // ));
+         config.setAllowedOrigins(List.of("*"));
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
         config.setAllowedHeaders(List.of("*"));
-        config.setAllowCredentials(true);
+        // config.setAllowCredentials(true);
         config.setMaxAge(3600L);
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
