@@ -13,7 +13,7 @@ public class WebConfig {
             public void addCorsMappings(CorsRegistry registry) {
                 registry.addMapping("/**")
                         .allowedOrigins(
-                                "http://localhost:3000",     // your local React/Vue/Angular dev server
+                                "http://localhost:5173",     // your local React/Vue/Angular dev server
                                 "https://vkswkkgk0sgcgcgckk4oowos.82.25.110.102.sslip.io" // your production domain
                         )
                         .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS")
