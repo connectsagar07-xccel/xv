@@ -1,10 +1,9 @@
 package com.logicleaf.invplatform.service;
 
-import com.logicleaf.invplatform.dto.LoginRequest;
-import com.logicleaf.invplatform.dto.SignUpRequest;
-import com.logicleaf.invplatform.dto.VerifyOtpRequest;
+import com.logicleaf.invplatform.dto.*;
 import com.logicleaf.invplatform.model.User;
 import com.logicleaf.invplatform.repository.UserRepository;
+import com.logicleaf.invplatform.security.CustomUserDetails;
 import com.logicleaf.invplatform.security.JwtTokenProvider;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.authentication.AuthenticationManager;
@@ -80,7 +79,7 @@ public class AuthService {
         return false;
     }
 
-    public String authenticateUser(LoginRequest loginRequest) {
+    public LoginResponse authenticateUser(LoginRequest loginRequest) {
         Authentication authentication = authenticationManager.authenticate(
                 new UsernamePasswordAuthenticationToken(
                         loginRequest.getEmail(),
@@ -89,8 +88,21 @@ public class AuthService {
         );
 
         SecurityContextHolder.getContext().setAuthentication(authentication);
+        String jwt = tokenProvider.generateToken(authentication);
+        CustomUserDetails userDetails = (CustomUserDetails) authentication.getPrincipal();
+        User user = userDetails.getUser();
 
-        return tokenProvider.generateToken(authentication);
+        TokenResponse tokenResponse = new TokenResponse(jwt);
+        UserResponse userResponse = new UserResponse(
+                user.getId(),
+                user.getName(),
+                user.getEmail(),
+                user.getPhone(),
+                user.getRole().name(),
+                user.isVerified()
+        );
+
+        return new LoginResponse("success", "Login successful.", tokenResponse, userResponse);
     }
 
     private String generateOtp() {

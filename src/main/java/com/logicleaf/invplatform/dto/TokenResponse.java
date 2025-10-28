@@ -1,13 +1,17 @@
 package com.logicleaf.invplatform.dto;
 
+import lombok.AllArgsConstructor;
 import lombok.Data;
+import lombok.NoArgsConstructor;
 
 @Data
-public class JwtAuthenticationResponse {
+@NoArgsConstructor
+@AllArgsConstructor
+public class TokenResponse {
     private String accessToken;
     private String tokenType = "Bearer";
 
-    public JwtAuthenticationResponse(String accessToken) {
+    public TokenResponse(String accessToken) {
         this.accessToken = accessToken;
     }
 }
