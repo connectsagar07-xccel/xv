@@ -1,9 +1,6 @@
 package com.logicleaf.invplatform.controller;
 
-import com.logicleaf.invplatform.dto.JwtAuthenticationResponse;
-import com.logicleaf.invplatform.dto.LoginRequest;
-import com.logicleaf.invplatform.dto.SignUpRequest;
-import com.logicleaf.invplatform.dto.VerifyOtpRequest;
+import com.logicleaf.invplatform.dto.*;
 import com.logicleaf.invplatform.model.User;
 import com.logicleaf.invplatform.service.AuthService;
 import jakarta.validation.Valid;
@@ -42,8 +39,8 @@ public class AuthController {
     @PostMapping("/login")
     public ResponseEntity<?> authenticateUser(@Valid @RequestBody LoginRequest loginRequest) {
         try {
-            String jwt = authService.authenticateUser(loginRequest);
-            return ResponseEntity.ok(new JwtAuthenticationResponse(jwt));
+            LoginResponse loginResponse = authService.authenticateUser(loginRequest);
+            return ResponseEntity.ok(loginResponse);
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid credentials.");
         }
