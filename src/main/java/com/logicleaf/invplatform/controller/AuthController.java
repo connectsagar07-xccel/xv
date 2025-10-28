@@ -42,8 +42,8 @@ public class AuthController {
     @PostMapping("/login")
     public ResponseEntity<?> authenticateUser(@Valid @RequestBody LoginRequest loginRequest) {
         try {
-            String jwt = authService.authenticateUser(loginRequest);
-            return ResponseEntity.ok(new JwtAuthenticationResponse(jwt));
+            JwtAuthenticationResponse response = authService.authenticateUser(loginRequest);
+            return ResponseEntity.ok(response);
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid credentials.");
         }
