@@ -85,10 +85,51 @@ public class ZohoService {
         }
     }
 
-    // Placeholder for fetching metrics
-    public void fetchAndSaveMetrics(String startupId) {
-        // Logic to use the access token to call Zoho APIs will go here.
-        // This will involve checking if the token is expired and refreshing if needed.
-        // Then, use the OpenAPI generated clients to fetch data.
+    public String getValidZohoAccessToken(String startupId) {
+        Startup startup = startupRepository.findById(startupId)
+                .orElseThrow(() -> new RuntimeException("Startup not found with id: " + startupId));
+
+        if (startup.getZohoRefreshToken() == null) {
+            throw new IllegalStateException("Zoho account not connected for startup: " + startupId);
+        }
+
+        // Refresh the token if it's expired or about to expire (e.g., within the next minute)
+        if (startup.getZohoTokenExpiryTime() == null || startup.getZohoTokenExpiryTime().isBefore(LocalDateTime.now().plusMinutes(1))) {
+            refreshZohoToken(startup);
+        }
+
+        return startup.getZohoAccessToken();
+    }
+
+    private void refreshZohoToken(Startup startup) {
+        RestTemplate restTemplate = new RestTemplate();
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
+
+        MultiValueMap<String, String> map = new LinkedMultiValueMap<>();
+        map.add("refresh_token", startup.getZohoRefreshToken());
+        map.add("client_id", zohoClientId);
+        map.add("client_secret", zohoClientSecret);
+        map.add("grant_type", "refresh_token");
+
+        HttpEntity<MultiValueMap<String, String>> request = new HttpEntity<>(map, headers);
+
+        try {
+            JsonNode response = restTemplate.postForObject(ZOHO_TOKEN_URL, request, JsonNode.class);
+
+            if (response != null && response.has("access_token")) {
+                startup.setZohoAccessToken(response.get("access_token").asText());
+                long expiresIn = response.get("expires_in").asLong();
+                startup.setZohoTokenExpiryTime(LocalDateTime.now().plusSeconds(expiresIn));
+                startupRepository.save(startup);
+            } else {
+                // Log the error response from Zoho for debugging
+                String errorResponse = response != null ? response.toString() : "No response body";
+                throw new RuntimeException("Failed to refresh Zoho access token. Response: " + errorResponse);
+            }
+        } catch (Exception e) {
+            // Log the exception
+            throw new RuntimeException("Error while refreshing Zoho token: " + e.getMessage(), e);
+        }
     }
 }
