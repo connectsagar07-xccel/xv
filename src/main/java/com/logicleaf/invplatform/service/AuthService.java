@@ -15,6 +15,7 @@ import org.springframework.stereotype.Service;
 
 import java.security.SecureRandom;
 import java.time.LocalDateTime;
+import java.util.Optional;
 
 @Service
 public class AuthService {
@@ -35,8 +36,20 @@ public class AuthService {
     private NotificationService notificationService;
 
     public User registerUser(SignUpRequest signUpRequest) {
-        if (userRepository.existsByEmail(signUpRequest.getEmail())) {
-            throw new RuntimeException("Email address already in use.");
+        Optional<User> existingUser = userRepository.findByEmail(signUpRequest.getEmail());
+        if (existingUser.isPresent()) {
+            User user = existingUser.get();
+            if (user.isVerified()) {
+                throw new RuntimeException("Email address already in use.");
+            } else {
+                // Resend OTP for unverified user
+                String otp = generateOtp();
+                user.setOtp(otp);
+                user.setOtpExpiryTime(LocalDateTime.now().plusMinutes(10));
+                userRepository.save(user);
+                notificationService.sendOtp(user.getEmail(), otp);
+                throw new RuntimeException("Verification pending. A new OTP has been sent to your email.");
+            }
         }
 
         // Create new user's account
@@ -77,6 +90,21 @@ public class AuthService {
         }
 
         return false;
+    }
+
+    public void resendOtp(ResendOtpRequest resendOtpRequest) {
+        User user = userRepository.findByEmail(resendOtpRequest.getEmail())
+                .orElseThrow(() -> new RuntimeException("User not found."));
+
+        if (user.isVerified()) {
+            throw new RuntimeException("User is already verified.");
+        }
+
+        String otp = generateOtp();
+        user.setOtp(otp);
+        user.setOtpExpiryTime(LocalDateTime.now().plusMinutes(10));
+        userRepository.save(user);
+        notificationService.sendOtp(user.getEmail(), otp);
     }
 
     public LoginResponse authenticateUser(LoginRequest loginRequest) {
