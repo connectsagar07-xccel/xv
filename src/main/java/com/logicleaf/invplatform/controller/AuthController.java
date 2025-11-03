@@ -36,6 +36,16 @@ public class AuthController {
         }
     }
 
+    @PostMapping("/resend-otp")
+    public ResponseEntity<?> resendOtp(@Valid @RequestBody ResendOtpRequest resendOtpRequest) {
+        try {
+            authService.resendOtp(resendOtpRequest);
+            return ResponseEntity.ok("A new OTP has been sent to your email.");
+        } catch (RuntimeException e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
+
     @PostMapping("/login")
     public ResponseEntity<?> authenticateUser(@Valid @RequestBody LoginRequest loginRequest) {
         try {
