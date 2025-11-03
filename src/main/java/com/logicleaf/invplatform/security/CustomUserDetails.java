@@ -50,8 +50,8 @@ public class CustomUserDetails implements UserDetails {
         return true;
     }
 
-    // @Override
-    // public boolean isEnabled() {
-    //     return user.isVerified();
-    // }
+    @Override
+    public boolean isEnabled() {
+        return user.isVerified();
+    }
 }

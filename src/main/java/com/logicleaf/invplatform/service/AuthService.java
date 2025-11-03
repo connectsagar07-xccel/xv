@@ -36,24 +36,32 @@ public class AuthService {
     private NotificationService notificationService;
 
     public User registerUser(SignUpRequest signUpRequest) {
-        Optional<User> existingUser = userRepository.findByEmail(signUpRequest.getEmail());
-        if (existingUser.isPresent()) {
-            User user = existingUser.get();
-            if (user.isVerified()) {
+        Optional<User> existingUserOpt = userRepository.findByEmail(signUpRequest.getEmail());
+
+        if (existingUserOpt.isPresent()) {
+            User existingUser = existingUserOpt.get();
+
+            if (existingUser.isVerified()) {
                 throw new RuntimeException("Email address already in use.");
             } else {
-                // Resend OTP for unverified user
+                // Overwrite unverified user's data and resend OTP
+                existingUser.setName(signUpRequest.getName());
+                existingUser.setPhone(signUpRequest.getPhone());
+                existingUser.setPasswordHash(passwordEncoder.encode(signUpRequest.getPassword()));
+                existingUser.setRole(signUpRequest.getRole());
+
                 String otp = generateOtp();
-                user.setOtp(otp);
-                user.setOtpExpiryTime(LocalDateTime.now().plusMinutes(10));
-                userRepository.save(user);
-                notificationService.sendOtp(user.getEmail(), otp);
-                throw new RuntimeException("Verification pending. A new OTP has been sent to your email.");
+                existingUser.setOtp(otp);
+                existingUser.setOtpExpiryTime(LocalDateTime.now().plusMinutes(10));
+                existingUser = userRepository.save(existingUser);
+
+                notificationService.sendOtp(existingUser.getEmail(), otp);
+                throw new RuntimeException("Verification pending. New OTP sent to your email.");
             }
         }
 
-        // Create new user's account
-        User user = User.builder()
+        // New user registration
+        User newUser = User.builder()
                 .name(signUpRequest.getName())
                 .email(signUpRequest.getEmail())
                 .phone(signUpRequest.getPhone())
@@ -62,15 +70,13 @@ public class AuthService {
                 .isVerified(false)
                 .build();
 
-        // Generate and send OTP
         String otp = generateOtp();
-        user.setOtp(otp);
-        user.setOtpExpiryTime(LocalDateTime.now().plusMinutes(10)); // OTP valid for 10 minutes
+        newUser.setOtp(otp);
+        newUser.setOtpExpiryTime(LocalDateTime.now().plusMinutes(10));
+        newUser = userRepository.save(newUser);
 
-        user = userRepository.save(user);
-        notificationService.sendOtp(user.getEmail(), otp);
-
-        return user;
+        notificationService.sendOtp(newUser.getEmail(), otp);
+        return newUser;
     }
 
     public boolean verifyOtp(VerifyOtpRequest verifyOtpRequest) {
@@ -111,9 +117,7 @@ public class AuthService {
         Authentication authentication = authenticationManager.authenticate(
                 new UsernamePasswordAuthenticationToken(
                         loginRequest.getEmail(),
-                        loginRequest.getPassword()
-                )
-        );
+                        loginRequest.getPassword()));
 
         SecurityContextHolder.getContext().setAuthentication(authentication);
         String jwt = tokenProvider.generateToken(authentication);
@@ -127,8 +131,7 @@ public class AuthService {
                 user.getEmail(),
                 user.getPhone(),
                 user.getRole().name(),
-                user.isVerified()
-        );
+                user.isVerified());
 
         return new LoginResponse("success", "Login successful.", tokenResponse, userResponse);
     }
