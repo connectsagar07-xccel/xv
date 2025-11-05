@@ -38,29 +38,11 @@ public class AuthService {
     public User registerUser(SignUpRequest signUpRequest) {
         Optional<User> existingUserOpt = userRepository.findByEmail(signUpRequest.getEmail());
 
-        if (existingUserOpt.isPresent()) {
+        if (existingUserOpt.isPresent() && existingUser.isVerified()) {
             User existingUser = existingUserOpt.get();
-
-            if (existingUser.isVerified()) {
-                throw new RuntimeException("Email address already in use.");
-            } else {
-                // Overwrite unverified user's data and resend OTP
-                existingUser.setName(signUpRequest.getName());
-                existingUser.setPhone(signUpRequest.getPhone());
-                existingUser.setPasswordHash(passwordEncoder.encode(signUpRequest.getPassword()));
-                existingUser.setRole(signUpRequest.getRole());
-
-                String otp = generateOtp();
-                existingUser.setOtp(otp);
-                existingUser.setOtpExpiryTime(LocalDateTime.now().plusMinutes(10));
-                existingUser = userRepository.save(existingUser);
-
-                notificationService.sendOtp(existingUser.getEmail(), otp);
-                throw new RuntimeException("Verification pending. New OTP sent to your email.");
-            }
+            throw new RuntimeException("Email address already in use.");
         }
 
-        // New user registration
         User newUser = User.builder()
                 .name(signUpRequest.getName())
                 .email(signUpRequest.getEmail())
