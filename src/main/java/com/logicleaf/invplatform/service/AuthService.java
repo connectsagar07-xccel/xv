@@ -38,8 +38,8 @@ public class AuthService {
     public User registerUser(SignUpRequest signUpRequest) {
         Optional<User> existingUserOpt = userRepository.findByEmail(signUpRequest.getEmail());
 
-        if (existingUserOpt.isPresent() && existingUser.isVerified()) {
-            User existingUser = existingUserOpt.get();
+        
+        if (existingUserOpt.isPresent() && existingUserOpt.get().isVerified()) {
             throw new RuntimeException("Email address already in use.");
         }
 
@@ -55,8 +55,9 @@ public class AuthService {
         String otp = generateOtp();
         newUser.setOtp(otp);
         newUser.setOtpExpiryTime(LocalDateTime.now().plusMinutes(10));
-        newUser = userRepository.save(newUser);
-
+        if(!existingUserOpt.isPresent()){
+            newUser = userRepository.save(newUser);
+        }   
         notificationService.sendOtp(newUser.getEmail(), otp);
         return newUser;
     }
