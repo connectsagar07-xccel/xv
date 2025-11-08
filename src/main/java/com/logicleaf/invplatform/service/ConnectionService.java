@@ -2,113 +2,211 @@ package com.logicleaf.invplatform.service;
 
 import com.logicleaf.invplatform.model.*;
 import com.logicleaf.invplatform.repository.*;
-import org.springframework.beans.factory.annotation.Autowired;
+import jakarta.mail.MessagingException;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
-import java.util.Optional;
-
 @Service
+@RequiredArgsConstructor
 public class ConnectionService {
 
-    @Autowired
-    private StartupInvestorMappingRepository mappingRepository;
+        private final StartupInvestorMappingRepository mappingRepository;
+        private final UserRepository userRepository;
+        private final StartupRepository startupRepository;
+        private final InvestorRepository investorRepository;
+        private final MailService mailService;
 
-    @Autowired
-    private UserRepository userRepository;
+        // Founder invites an investor
+        public StartupInvestorMapping inviteInvestor(String founderEmail, String investorEmail,
+                        InvestorRole investorRole) {
+                User founderUser = userRepository.findByEmail(founderEmail)
+                                .orElseThrow(() -> new RuntimeException("Founder not found."));
+                Startup startup = startupRepository.findByFounderUserId(founderUser.getId())
+                                .orElseThrow(() -> new RuntimeException("Startup not found."));
 
-    @Autowired
-    private StartupRepository startupRepository;
+                User investorUser = userRepository.findByEmail(investorEmail)
+                                .orElseThrow(() -> new RuntimeException("Investor not found."));
+                Investor investor = investorRepository.findByUserId(investorUser.getId())
+                                .orElseThrow(() -> new RuntimeException("Investor profile not found."));
 
-    @Autowired
-    private InvestorRepository investorRepository;
+                StartupInvestorMapping mapping = StartupInvestorMapping.builder()
+                                .startupId(startup.getId())
+                                .investorId(investor.getId())
+                                .investorRole(investorRole) // ✅ added
+                                .status(MappingStatus.INVITED)
+                                .build();
 
-    @Autowired
-    private NotificationService notificationService; // For sending invites
+                mapping = mappingRepository.save(mapping);
 
-    // Founder invites an investor
-    public StartupInvestorMapping inviteInvestor(String founderEmail, String investorEmail) {
-        User founderUser = userRepository.findByEmail(founderEmail)
-                .orElseThrow(() -> new RuntimeException("Founder not found."));
-        Startup startup = startupRepository.findByFounderUserId(founderUser.getId())
-                .orElseThrow(() -> new RuntimeException("Founder profile not found."));
+                try {
+                        mailService.sendConnectionEmail(investorUser.getEmail(), startup.getStartupName(),
+                                        mapping.getId(), true);
+                } catch (Exception e) {
+                        System.err.println("Failed to send invite email: " + e.getMessage());
+                }
 
-        Optional<User> investorUserOpt = userRepository.findByEmail(investorEmail);
-
-        // If investor doesn't exist, we can create a placeholder or send an invite to join the platform.
-        // For now, we'll assume the investor must have an account.
-        User investorUser = investorUserOpt.orElseThrow(() -> new RuntimeException("Investor not found. Please ask them to sign up first."));
-        Investor investor = investorRepository.findByUserId(investorUser.getId())
-                .orElseThrow(() -> new RuntimeException("Investor profile not found."));
-
-        StartupInvestorMapping mapping = StartupInvestorMapping.builder()
-                .startupId(startup.getId())
-                .investorId(investor.getId())
-                .status(MappingStatus.INVITED)
-                .build();
-
-        // In a real app, send an email notification to the investor
-        // notificationService.sendInvitation(investorEmail, startup.getStartupName());
-
-        return mappingRepository.save(mapping);
-    }
-
-    // Founder approves a pending request from an investor
-    public StartupInvestorMapping approveConnection(String founderEmail, String mappingId) {
-        User founderUser = userRepository.findByEmail(founderEmail)
-                .orElseThrow(() -> new RuntimeException("Founder not found."));
-        Startup startup = startupRepository.findByFounderUserId(founderUser.getId())
-                .orElseThrow(() -> new RuntimeException("Founder profile not found."));
-
-        StartupInvestorMapping mapping = mappingRepository.findById(mappingId)
-                .orElseThrow(() -> new RuntimeException("Connection request not found."));
-
-        // Ensure the mapping belongs to the founder's startup and is in PENDING state
-        if (!mapping.getStartupId().equals(startup.getId()) || mapping.getStatus() != MappingStatus.PENDING) {
-            throw new RuntimeException("Invalid request. Not a pending connection for this startup.");
+                return mapping;
         }
 
-        mapping.setStatus(MappingStatus.ACTIVE);
-        return mappingRepository.save(mapping);
-    }
+        // Investor requests connection with a startup
+        public StartupInvestorMapping requestConnection(String investorEmail, String startupId,
+                        InvestorRole investorRole) {
+                User investorUser = userRepository.findByEmail(investorEmail)
+                                .orElseThrow(() -> new RuntimeException("Investor not found."));
+                Investor investor = investorRepository.findByUserId(investorUser.getId())
+                                .orElseThrow(() -> new RuntimeException("Investor profile not found."));
+                Startup startup = startupRepository.findById(startupId)
+                                .orElseThrow(() -> new RuntimeException("Startup not found."));
 
-    // Investor requests to connect with a startup
-    public StartupInvestorMapping requestConnection(String investorEmail, String startupId) {
-        User investorUser = userRepository.findByEmail(investorEmail)
-                .orElseThrow(() -> new RuntimeException("Investor not found."));
-        Investor investor = investorRepository.findByUserId(investorUser.getId())
-                .orElseThrow(() -> new RuntimeException("Investor profile not found."));
+                StartupInvestorMapping mapping = StartupInvestorMapping.builder()
+                                .startupId(startup.getId())
+                                .investorId(investor.getId())
+                                .investorRole(investorRole) // ✅ added
+                                .status(MappingStatus.PENDING)
+                                .build();
 
-        Startup startup = startupRepository.findById(startupId)
-                .orElseThrow(() -> new RuntimeException("Startup not found."));
+                mapping = mappingRepository.save(mapping);
 
-        StartupInvestorMapping mapping = StartupInvestorMapping.builder()
-                .startupId(startup.getId())
-                .investorId(investor.getId())
-                .status(MappingStatus.PENDING) // Founder needs to approve this
-                .build();
+                User founderUser = userRepository.findById(startup.getFounderUserId())
+                                .orElseThrow(() -> new RuntimeException("Founder not found."));
 
-        // In a real app, send a notification to the founder
-        // notificationService.sendConnectionRequest(startup.getFounderUserId(), investor.getFirmName());
+                try {
+                        mailService.sendConnectionEmail(founderUser.getEmail(), investor.getFirmName(), mapping.getId(),
+                                        false);
+                } catch (Exception e) {
+                        System.err.println("Failed to send request email: " + e.getMessage());
+                }
 
-        return mappingRepository.save(mapping);
-    }
-
-    // Investor accepts an invitation from a startup
-    public StartupInvestorMapping acceptInvitation(String investorEmail, String mappingId) {
-        User investorUser = userRepository.findByEmail(investorEmail)
-                .orElseThrow(() -> new RuntimeException("Investor not found."));
-        Investor investor = investorRepository.findByUserId(investorUser.getId())
-                .orElseThrow(() -> new RuntimeException("Investor profile not found."));
-
-        StartupInvestorMapping mapping = mappingRepository.findById(mappingId)
-                .orElseThrow(() -> new RuntimeException("Invitation not found."));
-
-        // Ensure the mapping is for this investor and is in INVITED state
-        if (!mapping.getInvestorId().equals(investor.getId()) || mapping.getStatus() != MappingStatus.INVITED) {
-            throw new RuntimeException("Invalid request. Not an invited connection for this investor.");
+                return mapping;
         }
 
-        mapping.setStatus(MappingStatus.ACTIVE);
-        return mappingRepository.save(mapping);
-    }
+        // Founder approves a PENDING request
+        public StartupInvestorMapping approveConnectionPublic(String mappingId) {
+                StartupInvestorMapping m = mappingRepository.findById(mappingId)
+                                .orElseThrow(() -> new RuntimeException("Connection not found."));
+
+                if (m.getStatus() != MappingStatus.PENDING) {
+                        throw new RuntimeException("Only pending requests can be approved by founder.");
+                }
+
+                // load both sides for notifications
+                Startup startup = startupRepository.findById(m.getStartupId())
+                                .orElseThrow(() -> new RuntimeException("Startup not found."));
+                Investor investor = investorRepository.findById(m.getInvestorId())
+                                .orElseThrow(() -> new RuntimeException("Investor not found."));
+                User founderUser = userRepository.findById(startup.getFounderUserId())
+                                .orElseThrow(() -> new RuntimeException("Founder user not found."));
+                User investorUser = userRepository.findById(investor.getUserId())
+                                .orElseThrow(() -> new RuntimeException("Investor user not found."));
+
+                m.setStatus(MappingStatus.ACTIVE);
+                StartupInvestorMapping saved = mappingRepository.save(m);
+
+                // notify investor that founder approved
+                try {
+                        mailService.sendConnectionStatusEmail(
+                                        founderUser.getEmail(),
+                                        founderUser.getName(),
+                                        investorUser.getEmail(),
+                                        startup.getStartupName(),
+                                        "approved",
+                                        "founder");
+                } catch (Exception ignored) {
+                }
+
+                return saved;
+        }
+
+        // Investor accepts an INVITED invite
+        public StartupInvestorMapping acceptInvitationPublic(String mappingId) {
+                StartupInvestorMapping m = mappingRepository.findById(mappingId)
+                                .orElseThrow(() -> new RuntimeException("Invitation not found."));
+
+                if (m.getStatus() != MappingStatus.INVITED) {
+                        throw new RuntimeException("Only invited connections can be accepted by investor.");
+                }
+
+                Startup startup = startupRepository.findById(m.getStartupId())
+                                .orElseThrow(() -> new RuntimeException("Startup not found."));
+                Investor investor = investorRepository.findById(m.getInvestorId())
+                                .orElseThrow(() -> new RuntimeException("Investor not found."));
+                User founderUser = userRepository.findById(startup.getFounderUserId())
+                                .orElseThrow(() -> new RuntimeException("Founder user not found."));
+                User investorUser = userRepository.findById(investor.getUserId())
+                                .orElseThrow(() -> new RuntimeException("Investor user not found."));
+
+                m.setStatus(MappingStatus.ACTIVE);
+                StartupInvestorMapping saved = mappingRepository.save(m);
+
+                // notify founder that investor accepted
+                try {
+                        mailService.sendConnectionStatusEmail(
+                                        investorUser.getEmail(),
+                                        investorUser.getName(),
+                                        founderUser.getEmail(),
+                                        startup.getStartupName(),
+                                        "accepted",
+                                        "investor");
+                } catch (Exception ignored) {
+                }
+
+                return saved;
+        }
+
+        // Founder rejects a PENDING request (delete mapping)
+        public void rejectByFounder(String mappingId) {
+                StartupInvestorMapping m = mappingRepository.findById(mappingId)
+                                .orElseThrow(() -> new RuntimeException("Connection not found."));
+
+                Startup startup = startupRepository.findById(m.getStartupId())
+                                .orElseThrow(() -> new RuntimeException("Startup not found."));
+                Investor investor = investorRepository.findById(m.getInvestorId())
+                                .orElseThrow(() -> new RuntimeException("Investor not found."));
+                User founderUser = userRepository.findById(startup.getFounderUserId())
+                                .orElseThrow(() -> new RuntimeException("Founder user not found."));
+                User investorUser = userRepository.findById(investor.getUserId())
+                                .orElseThrow(() -> new RuntimeException("Investor user not found."));
+
+                // optional status gate:
+                if (m.getStatus() != MappingStatus.PENDING) {
+                        throw new RuntimeException("Only pending requests can be rejected by founder.");
+                }
+
+                // notify investor, then delete
+                try {
+                        mailService.sendRejectionEmail(
+                                        investorUser.getEmail(), founderUser.getName(), startup.getStartupName(), true);
+                } catch (Exception ignored) {
+                }
+
+                mappingRepository.deleteById(mappingId);
+        }
+
+        // Investor rejects an INVITED invite (delete mapping)
+        public void rejectByInvestor(String mappingId) {
+                StartupInvestorMapping m = mappingRepository.findById(mappingId)
+                                .orElseThrow(() -> new RuntimeException("Invitation not found."));
+
+                Startup startup = startupRepository.findById(m.getStartupId())
+                                .orElseThrow(() -> new RuntimeException("Startup not found."));
+                Investor investor = investorRepository.findById(m.getInvestorId())
+                                .orElseThrow(() -> new RuntimeException("Investor not found."));
+                User founderUser = userRepository.findById(startup.getFounderUserId())
+                                .orElseThrow(() -> new RuntimeException("Founder user not found."));
+                User investorUser = userRepository.findById(investor.getUserId())
+                                .orElseThrow(() -> new RuntimeException("Investor user not found."));
+
+                if (m.getStatus() != MappingStatus.INVITED) {
+                        throw new RuntimeException("Only invited connections can be rejected by investor.");
+                }
+
+                try {
+                        mailService.sendRejectionEmail(
+                                        founderUser.getEmail(), investorUser.getName(), startup.getStartupName(),
+                                        false);
+                } catch (Exception ignored) {
+                }
+
+                mappingRepository.deleteById(mappingId);
+        }
 }

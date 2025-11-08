@@ -13,9 +13,17 @@ import org.springframework.data.mongodb.core.mapping.Document;
 @AllArgsConstructor
 @Document(collection = "startup_investor_mappings")
 public class StartupInvestorMapping {
+
     @Id
     private String id;
+
     private String startupId;
     private String investorId;
+
     private MappingStatus status;
+
+    // ✅ Added investor role field
+    private InvestorRole investorRole;
+
+    
 }

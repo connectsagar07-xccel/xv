@@ -62,7 +62,11 @@ public class SecurityConfig {
                             "/api/auth/**",
                             "/v3/api-docs/**",
                             "/swagger-ui/**",
-                            "/swagger-ui.html"
+                            "/swagger-ui.html",
+                            "/api/founder/connections/*/approve",
+                            "/api/founder/connections/*/reject",
+                            "/api/investor/connections/*/accept",
+                            "/api/investor/connections/*/reject"
                     ).permitAll()
                     .anyRequest().authenticated()
             );
