@@ -1,6 +1,9 @@
 package com.logicleaf.invplatform.controller;
 
 import com.logicleaf.invplatform.dto.InvestorFullResponse;
+import com.logicleaf.invplatform.model.DocumentType;
+import com.logicleaf.invplatform.model.StartupDocument;
+import com.logicleaf.invplatform.service.StartupDocumentService;
 import com.logicleaf.invplatform.service.StartupService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -8,13 +11,14 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
 @RestController
-@RequestMapping("/api/founder/startup")
+@RequestMapping("/api/startup")
 @RequiredArgsConstructor
 @PreAuthorize("hasRole('FOUNDER')")
 public class StartupController {
@@ -34,6 +38,42 @@ public class StartupController {
         response.put("status", "success");
         response.put("message", "Complete investor details fetched successfully.");
         response.put("data", investors);
+
+        return ResponseEntity.ok(response);
+    }
+
+    private final StartupDocumentService documentService;
+
+    /**
+     * Upload a startup document (Financial / Legal / Pitch)
+     */
+    @PostMapping("/documents")
+    public ResponseEntity<?> uploadDocument(
+            @AuthenticationPrincipal UserDetails userDetails,
+            @RequestParam("file") MultipartFile file,
+            @RequestParam("documentType") DocumentType documentType) {
+
+        StartupDocument uploaded = documentService.uploadDocument(userDetails.getUsername(), file, documentType);
+
+        Map<String, Object> response = new HashMap<>();
+        response.put("status", "success");
+        response.put("message", "Document uploaded successfully.");
+        response.put("data", uploaded);
+
+        return ResponseEntity.ok(response);
+    }
+
+    /**
+     * Get all documents uploaded for this startup
+     */
+    @GetMapping("/documents")
+    public ResponseEntity<?> getStartupDocuments(@AuthenticationPrincipal UserDetails userDetails) {
+        List<StartupDocument> documents = documentService.getDocuments(userDetails.getUsername());
+
+        Map<String, Object> response = new HashMap<>();
+        response.put("status", "success");
+        response.put("message", "Startup documents fetched successfully.");
+        response.put("data", documents);
 
         return ResponseEntity.ok(response);
     }
