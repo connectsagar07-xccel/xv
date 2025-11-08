@@ -1,21 +1,21 @@
 package com.logicleaf.invplatform.service;
 
+import com.logicleaf.invplatform.model.OAuthToken;
 import com.logicleaf.invplatform.model.Startup;
 import com.logicleaf.invplatform.model.User;
 import com.logicleaf.invplatform.repository.StartupRepository;
 import com.logicleaf.invplatform.repository.UserRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.*;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
-import org.springframework.http.HttpEntity;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.MediaType;
 import com.fasterxml.jackson.databind.JsonNode;
 
 
+import java.time.Instant;
 import java.time.LocalDateTime;
 
 @Service
@@ -35,6 +35,12 @@ public class ZohoService {
 
     @Autowired
     private UserRepository userRepository;
+
+    @Autowired
+    private OAuthToken currentToken;
+
+    @Autowired
+    private RestTemplate restTemplate;
 
     private static final String ZOHO_AUTH_URL = "https://accounts.zoho.com/oauth/v2/auth";
     private static final String ZOHO_TOKEN_URL = "https://accounts.zoho.com/oauth/v2/token";
@@ -71,12 +77,23 @@ public class ZohoService {
         JsonNode response = restTemplate.postForObject(ZOHO_TOKEN_URL, request, JsonNode.class);
 
         if (response != null && response.has("access_token")) {
+
+            String accessToken = response.get("access_token").asText();
+            String refreshToken = response.has("refresh_token") ? response.get("refresh_token").asText() : null;
+            String apiDomain = response.has("api_domain") ? response.get("api_domain").asText() : "https://www.zohoapis.com";
+            long expiresIn = response.get("expires_in").asLong(); // Zoho token expiry is in seconds
+
+            currentToken = OAuthToken.builder()
+                    .accessToken(accessToken)
+                    .refreshToken(refreshToken)
+                    .apiDomain(apiDomain)
+                    .expiresAt(Instant.now().plusSeconds(expiresIn))
+                    .build();
+
             startup.setZohoAccessToken(response.get("access_token").asText());
             if (response.has("refresh_token")) {
                 startup.setZohoRefreshToken(response.get("refresh_token").asText());
             }
-            // Zoho token expiry is in seconds
-            long expiresIn = response.get("expires_in").asLong();
             startup.setZohoTokenExpiryTime(LocalDateTime.now().plusSeconds(expiresIn));
 
             startupRepository.save(startup);
@@ -90,5 +107,26 @@ public class ZohoService {
         // Logic to use the access token to call Zoho APIs will go here.
         // This will involve checking if the token is expired and refreshing if needed.
         // Then, use the OpenAPI generated clients to fetch data.
+    }
+
+    public String fetchSalesOrders(String organizationId) {
+        ensureValidToken();
+
+        String url = currentToken.getApiDomain() + "/books/v3/salesorders?organization_id=" + organizationId;
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setBearerAuth(currentToken.getAccessToken());
+
+        HttpEntity<Void> entity = new HttpEntity<>(headers);
+        ResponseEntity<String> resp = restTemplate.exchange(url, HttpMethod.GET, entity, String.class);
+
+        return resp.getBody();
+    }
+
+
+    private void ensureValidToken() {
+        if (currentToken == null || currentToken.getExpiresAt().isBefore(Instant.now())) {
+            throw new IllegalStateException("Token missing or expired. Please authorize again.");
+        }
     }
 }

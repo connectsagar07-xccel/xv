@@ -34,4 +34,10 @@ public class ZohoController {
             return ResponseEntity.badRequest().body("Error connecting Zoho account: " + e.getMessage());
         }
     }
+
+    @GetMapping("/salesorders")
+    public String getSalesOrders(@RequestParam String organizationId) {
+        return zohoService.fetchSalesOrders(organizationId);
+    }
+
 }
