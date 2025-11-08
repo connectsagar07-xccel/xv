@@ -69,13 +69,17 @@ public class StartupDocumentService {
     /**
      * Get all documents uploaded for the logged-in founder's startup.
      */
-    public List<StartupDocument> getDocuments(String founderEmail) {
+    public List<StartupDocument> getDocuments(String founderEmail, DocumentType documentType) {
         User founder = userRepository.findByEmail(founderEmail)
                 .orElseThrow(() -> new ResourceNotFoundException("Founder not found."));
 
         Startup startup = startupRepository.findByFounderUserId(founder.getId())
                 .orElseThrow(() -> new ResourceNotFoundException("Startup not found for this founder."));
 
-        return documentRepository.findByStartupId(startup.getId());
+        if (documentType != null) {
+            return documentRepository.findByStartupIdAndDocumentType(startup.getId(), documentType);
+        } else {
+            return documentRepository.findByStartupId(startup.getId());
+        }
     }
 }

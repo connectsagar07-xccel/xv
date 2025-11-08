@@ -67,12 +67,17 @@ public class StartupController {
      * Get all documents uploaded for this startup
      */
     @GetMapping("/documents")
-    public ResponseEntity<?> getStartupDocuments(@AuthenticationPrincipal UserDetails userDetails) {
-        List<StartupDocument> documents = documentService.getDocuments(userDetails.getUsername());
+    public ResponseEntity<?> getStartupDocuments(
+            @AuthenticationPrincipal UserDetails userDetails,
+            @RequestParam(value = "documentType", required = false) DocumentType documentType) {
+
+        List<StartupDocument> documents = documentService.getDocuments(userDetails.getUsername(), documentType);
 
         Map<String, Object> response = new HashMap<>();
         response.put("status", "success");
-        response.put("message", "Startup documents fetched successfully.");
+        response.put("message", documentType == null
+                ? "All startup documents fetched successfully."
+                : "Startup documents of type " + documentType + " fetched successfully.");
         response.put("data", documents);
 
         return ResponseEntity.ok(response);
