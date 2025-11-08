@@ -105,18 +105,19 @@ public class ZohoService {
             if (orgResp.getStatusCode().is2xxSuccessful() && orgResp.getBody() != null) {
                 JsonNode organizations = orgResp.getBody().get("organizations");
                 if (organizations != null && organizations.isArray() && organizations.size() > 0) {
-                    // Replace "Your Organization Name" with your actual org name or a variable
-                    String targetOrgName = "Your Organization Name";
-                    String organizationId = null;
-                    for (JsonNode org : organizations) {
-                        if (org.has("name") && targetOrgName.equals(org.get("name").asText())) {
-                            organizationId = org.get("organization_id").asText();
-                            break;
-                        }
-                    }
-                    if (organizationId != null) {
-                        startup.setZohoOrganizationId(organizationId);
-                    }
+//                    String targetOrgName = "Your Organization Name";
+//                    String organizationId = null;
+//                    for (JsonNode org : organizations) {
+//                        if (org.has("name") && targetOrgName.equals(org.get("name").asText())) {
+//                            organizationId = org.get("organization_id").asText();
+//                            break;
+//                        }
+//                    }
+//                    if (organizationId != null) {
+//                        startup.setZohoOrganizationId(organizationId);
+//                    }
+                    String organizationId = organizations.get(0).get("organization_id").asText();
+                    startup.setZohoOrganizationId(organizationId);
                 }
             }
 
