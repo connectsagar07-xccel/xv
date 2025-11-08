@@ -37,10 +37,9 @@ public class ZohoService {
     private UserRepository userRepository;
 
     @Autowired
-    private OAuthToken currentToken;
-
-    @Autowired
     private RestTemplate restTemplate;
+
+    private OAuthToken currentToken;
 
     private static final String ZOHO_AUTH_URL = "https://accounts.zoho.com/oauth/v2/auth";
     private static final String ZOHO_TOKEN_URL = "https://accounts.zoho.com/oauth/v2/token";
@@ -81,7 +80,7 @@ public class ZohoService {
             String accessToken = response.get("access_token").asText();
             String refreshToken = response.has("refresh_token") ? response.get("refresh_token").asText() : null;
             String apiDomain = response.has("api_domain") ? response.get("api_domain").asText() : "https://www.zohoapis.com";
-            long expiresIn = response.get("expires_in").asLong(); // Zoho token expiry is in seconds
+            long expiresIn = response.get("expires_in").asLong();
 
             currentToken = OAuthToken.builder()
                     .accessToken(accessToken)
@@ -90,11 +89,36 @@ public class ZohoService {
                     .expiresAt(Instant.now().plusSeconds(expiresIn))
                     .build();
 
-            startup.setZohoAccessToken(response.get("access_token").asText());
-            if (response.has("refresh_token")) {
-                startup.setZohoRefreshToken(response.get("refresh_token").asText());
+            startup.setZohoAccessToken(accessToken);
+            if (refreshToken != null) {
+                startup.setZohoRefreshToken(refreshToken);
             }
             startup.setZohoTokenExpiryTime(LocalDateTime.now().plusSeconds(expiresIn));
+
+            // Fetch organization ID from Zoho Books
+            String orgUrl = "https://books.zoho.com/api/v3/organizations";
+            HttpHeaders orgHeaders = new HttpHeaders();
+            orgHeaders.set("Authorization", "Zoho-oauthtoken " + accessToken);
+            HttpEntity<Void> orgEntity = new HttpEntity<>(orgHeaders);
+
+            ResponseEntity<JsonNode> orgResp = restTemplate.exchange(orgUrl, HttpMethod.GET, orgEntity, JsonNode.class);
+            if (orgResp.getStatusCode().is2xxSuccessful() && orgResp.getBody() != null) {
+                JsonNode organizations = orgResp.getBody().get("organizations");
+                if (organizations != null && organizations.isArray() && organizations.size() > 0) {
+                    // Replace "Your Organization Name" with your actual org name or a variable
+                    String targetOrgName = "Your Organization Name";
+                    String organizationId = null;
+                    for (JsonNode org : organizations) {
+                        if (org.has("name") && targetOrgName.equals(org.get("name").asText())) {
+                            organizationId = org.get("organization_id").asText();
+                            break;
+                        }
+                    }
+                    if (organizationId != null) {
+                        startup.setZohoOrganizationId(organizationId);
+                    }
+                }
+            }
 
             startupRepository.save(startup);
         } else {

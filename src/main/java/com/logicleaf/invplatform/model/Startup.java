@@ -28,5 +28,6 @@ public class Startup {
     // Zoho Integration Fields
     private String zohoAccessToken;
     private String zohoRefreshToken;
+    private String zohoOrganizationId;
     private java.time.LocalDateTime zohoTokenExpiryTime;
 }
