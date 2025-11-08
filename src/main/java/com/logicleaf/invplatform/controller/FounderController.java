@@ -26,21 +26,17 @@ public class FounderController {
     @PostMapping("/connections/invite")
     public ResponseEntity<?> inviteInvestor(@AuthenticationPrincipal UserDetails userDetails,
             @Valid @RequestBody InviteInvestorRequest inviteRequest) {
-        try {
-            StartupInvestorMapping mapping = connectionService.inviteInvestor(
-                    userDetails.getUsername(),
-                    inviteRequest.getInvestorEmail(),
-                    inviteRequest.getInvestorRole());
-            return ResponseEntity.ok(mapping);
-        } catch (RuntimeException e) {
-            return ResponseEntity.badRequest().body(e.getMessage());
-        }
+        StartupInvestorMapping mapping = connectionService.inviteInvestor(
+                userDetails.getUsername(),
+                inviteRequest.getInvestorEmail(),
+                inviteRequest.getInvestorRole());
+        return ResponseEntity.ok(mapping);
     }
 
     // PUBLIC: founder approves an investor request (status must be PENDING)
     @GetMapping("/connections/{mappingId}/approve")
     public ResponseEntity<?> approveConnection(@PathVariable String mappingId) {
-        StartupInvestorMapping mapping = connectionService.approveConnectionPublic(mappingId);
+        StartupInvestorMapping mapping = connectionService.approveConnection(mappingId);
         return ResponseEntity.ok(mapping);
     }
 

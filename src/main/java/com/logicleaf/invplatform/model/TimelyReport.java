@@ -37,7 +37,7 @@ public class TimelyReport {
     private String asksFromInvestors;
 
     // ✅ List of structured attachment objects
-    private List<Attachment> attachments;
+    private List<TimelyReportAttachment> attachments;
 
     private List<String> investorUserIds;
 

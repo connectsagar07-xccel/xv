@@ -68,7 +68,7 @@ public class MailService {
         String html = """
                     <html>
                     <body style="font-family: Arial, sans-serif;">
-                        <h2>New Connection Request</h2>
+                        <h2>New Invitation</h2>
                         <p>%s</p>
                         <p>
                             <a href="%s" style="background-color:#28a745;color:white;padding:10px 15px;text-decoration:none;border-radius:5px;">Accept</a>
@@ -94,14 +94,14 @@ public class MailService {
             throws MessagingException {
 
         String subject = byFounder
-                ? "Your connection request was declined by " + startupName
+                ? "Your request was declined by " + startupName
                 : "Your invitation was declined by " + rejectedByName;
 
         String body = byFounder
                 ? String.format("""
                             <html>
                             <body style="font-family: Arial, sans-serif;">
-                                <h2>Connection Declined</h2>
+                                <h2>Request Declined</h2>
                                 <p>We're sorry, but your request to connect with <b>%s</b> has been declined.</p>
                                 <p style="color:gray;">You can explore other startups to invest in on our platform.</p>
                             </body>
@@ -140,16 +140,16 @@ public class MailService {
             MimeMessageHelper helper = new MimeMessageHelper(mimeMessage, "utf-8");
 
             String subject = switch (statusAction.toLowerCase()) {
-                case "approved" -> "Connection Approved";
+                case "approved" -> "Request Approved";
                 case "accepted" -> "Invitation Accepted";
-                case "rejected" -> "Connection Rejected";
+                case "rejected" -> "Request Rejected";
                 default -> "Connection Update";
             };
 
             String title = switch (statusAction.toLowerCase()) {
-                case "approved" -> "Your Connection Has Been Approved!";
+                case "approved" -> "Your request for Connection Has Been Approved!";
                 case "accepted" -> "Your Invitation Has Been Accepted!";
-                case "rejected" -> "Your Connection Has Been Declined.";
+                case "rejected" -> "Your request for Connection Has Been Declined.";
                 default -> "Connection Update";
             };
 

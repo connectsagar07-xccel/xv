@@ -26,20 +26,16 @@ public class InvestorController {
     @PostMapping("/connections/request")
     public ResponseEntity<?> requestConnection(@AuthenticationPrincipal UserDetails userDetails,
             @Valid @RequestBody ConnectStartupRequest request) {
-        try {
-            StartupInvestorMapping mapping = connectionService.requestConnection(
-                    userDetails.getUsername(),
-                    request.getStartupId(),
-                    request.getInvestorRole());
-            return ResponseEntity.ok(mapping);
-        } catch (RuntimeException e) {
-            return ResponseEntity.badRequest().body(e.getMessage());
-        }
+        StartupInvestorMapping mapping = connectionService.requestConnection(
+                userDetails.getUsername(),
+                request.getStartupId(),
+                request.getInvestorRole());
+        return ResponseEntity.ok(mapping);
     }
 
     @GetMapping("/connections/{mappingId}/accept")
     public ResponseEntity<?> acceptInvitation(@PathVariable String mappingId) {
-        StartupInvestorMapping mapping = connectionService.acceptInvitationPublic(mappingId);
+        StartupInvestorMapping mapping = connectionService.acceptInvitation(mappingId);
         return ResponseEntity.ok(mapping);
     }
 

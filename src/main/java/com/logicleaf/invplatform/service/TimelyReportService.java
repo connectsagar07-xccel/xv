@@ -41,7 +41,7 @@ public class TimelyReportService {
 
         // 💾 Save all uploaded files
         if (attachments != null && attachments.length > 0) {
-            List<Attachment> savedFiles = saveAttachments(attachments);
+            List<TimelyReportAttachment> savedFiles = saveAttachments(attachments);
             report.setAttachments(savedFiles);
         }
 
@@ -73,8 +73,8 @@ public class TimelyReportService {
     /**
      * Save all files to the global folder and return a list of Attachment objects.
      */
-    private List<Attachment> saveAttachments(MultipartFile[] attachments) {
-        List<Attachment> savedFiles = new ArrayList<>();
+    private List<TimelyReportAttachment> saveAttachments(MultipartFile[] attachments) {
+        List<TimelyReportAttachment> savedFiles = new ArrayList<>();
 
         try {
             Path dirPath = Paths.get(ATTACHMENT_DIR);
@@ -91,7 +91,7 @@ public class TimelyReportService {
                 file.transferTo(filePath.toFile());
 
                 // Build attachment object
-                Attachment attachment = Attachment.builder()
+                TimelyReportAttachment attachment = TimelyReportAttachment.builder()
                         .fileName(fileName)
                         .filePath(filePath.toAbsolutePath().toString())
                         .build();

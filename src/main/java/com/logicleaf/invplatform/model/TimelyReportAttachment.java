@@ -9,7 +9,7 @@ import lombok.NoArgsConstructor;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class Attachment {
+public class TimelyReportAttachment {
 
     private String fileName;  // The actual name of the file
     private String filePath;  // Full absolute path on disk

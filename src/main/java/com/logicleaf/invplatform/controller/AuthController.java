@@ -1,7 +1,6 @@
 package com.logicleaf.invplatform.controller;
 
 import com.logicleaf.invplatform.dto.*;
-import com.logicleaf.invplatform.model.User;
 import com.logicleaf.invplatform.service.AuthService;
 import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -19,7 +18,7 @@ public class AuthController {
     @PostMapping("/signup")
     public ResponseEntity<?> registerUser(@Valid @RequestBody SignUpRequest signUpRequest) {
         try {
-            User user = authService.registerUser(signUpRequest);
+            authService.registerUser(signUpRequest);
             return ResponseEntity.ok("User registered successfully. Please check your email for OTP.");
         } catch (RuntimeException e) {
             return ResponseEntity.badRequest().body(e.getMessage());
