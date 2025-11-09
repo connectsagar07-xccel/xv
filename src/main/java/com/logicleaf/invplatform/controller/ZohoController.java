@@ -20,9 +20,9 @@ public class ZohoController {
 
     @GetMapping("/auth")
     @PreAuthorize("hasRole('FOUNDER')")
-    public void initiateZohoAuth(@AuthenticationPrincipal UserDetails userDetails, HttpServletResponse response) throws IOException {
+    public ResponseEntity<?> getZohoAuthUrl(@AuthenticationPrincipal UserDetails userDetails) {
         String authUrl = zohoService.getZohoAuthUrl(userDetails.getUsername());
-        response.sendRedirect(authUrl);
+        return ResponseEntity.ok(java.util.Collections.singletonMap("authUrl", authUrl));
     }
 
     @GetMapping("/callback")
