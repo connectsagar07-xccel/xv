@@ -60,8 +60,8 @@ public class MailService {
                 ? senderName + " has invited you to connect!"
                 : senderName + " wants to connect with your startup!";
 
-        String acceptUrl = baseUrl + "/api/" + (fromFounder ? "investor" : "founder") + "/connections/" + mappingId
-                + "/accept";
+        String acceptUrl = baseUrl + "/api/" + (fromFounder ? "founder" : "investor") 
+        + "/connections/" + mappingId + (fromFounder ? "/approve" : "/accept");
         String rejectUrl = baseUrl + "/api/" + (fromFounder ? "investor" : "founder") + "/connections/" + mappingId
                 + "/reject";
 

@@ -1,7 +1,6 @@
 package com.logicleaf.invplatform.controller;
 
 import com.logicleaf.invplatform.dto.InviteInvestorRequest;
-import com.logicleaf.invplatform.model.StartupInvestorMapping;
 import com.logicleaf.invplatform.service.ConnectionService;
 import jakarta.validation.Valid;
 
@@ -26,18 +25,22 @@ public class FounderController {
     @PostMapping("/connections/invite")
     public ResponseEntity<?> inviteInvestor(@AuthenticationPrincipal UserDetails userDetails,
             @Valid @RequestBody InviteInvestorRequest inviteRequest) {
-        StartupInvestorMapping mapping = connectionService.inviteInvestor(
+        connectionService.inviteInvestor(
                 userDetails.getUsername(),
                 inviteRequest.getInvestorEmail(),
                 inviteRequest.getInvestorRole());
-        return ResponseEntity.ok(mapping);
+        return ResponseEntity.ok(Map.of(
+                "status", "success",
+                "message", "Investor invited successfully."));
     }
 
     // PUBLIC: founder approves an investor request (status must be PENDING)
     @GetMapping("/connections/{mappingId}/approve")
     public ResponseEntity<?> approveConnection(@PathVariable String mappingId) {
-        StartupInvestorMapping mapping = connectionService.approveConnection(mappingId);
-        return ResponseEntity.ok(mapping);
+        connectionService.approveConnection(mappingId);
+        return ResponseEntity.ok(Map.of(
+                "status", "success",
+                "message", "Connection approved successfully."));
     }
 
     // PUBLIC: founder rejects an investor request (delete + email counterparty)
@@ -46,7 +49,6 @@ public class FounderController {
         connectionService.rejectByFounder(mappingId);
         return ResponseEntity.ok(Map.of(
                 "status", "success",
-                "message", "Connection rejected and removed successfully."
-        ));
+                "message", "Connection rejected and removed successfully."));
     }
 }
