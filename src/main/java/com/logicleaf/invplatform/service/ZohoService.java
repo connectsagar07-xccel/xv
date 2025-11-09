@@ -41,13 +41,13 @@ public class ZohoService {
 
     private OAuthToken currentToken;
 
-    private static final String ZOHO_AUTH_URL = "https://accounts.zoho.com/oauth/v2/auth";
-    private static final String ZOHO_TOKEN_URL = "https://accounts.zoho.com/oauth/v2/token";
+    private static final String ZOHO_AUTH_URL = "https://accounts.zoho.in/oauth/v2/auth";
+    private static final String ZOHO_TOKEN_URL = "https://accounts.zoho.in/oauth/v2/token";
 
     public String getZohoAuthUrl(String userEmail) {
         // We pass the user's email as state to identify them on callback
         return ZOHO_AUTH_URL + "?response_type=code&client_id=" + zohoClientId +
-               "&scope=ZohoExpenses.fullaccess.all,ZohoBooks.fullaccess.all&redirect_uri=" + zohoRedirectUri +
+               "&scope=ZohoExpense.fullaccess.all,ZohoBooks.fullaccess.all&redirect_uri=" + zohoRedirectUri +
                "&access_type=offline&prompt=consent&state=" + userEmail;
     }
 
@@ -96,7 +96,7 @@ public class ZohoService {
             startup.setZohoTokenExpiryTime(LocalDateTime.now().plusSeconds(expiresIn));
 
             // Fetch organization ID from Zoho Books
-            String orgUrl = "https://books.zoho.com/api/v3/organizations";
+            String orgUrl = "https://books.zoho.in/api/v3/organizations";
             HttpHeaders orgHeaders = new HttpHeaders();
             orgHeaders.set("Authorization", "Zoho-oauthtoken " + accessToken);
             HttpEntity<Void> orgEntity = new HttpEntity<>(orgHeaders);
