@@ -22,6 +22,8 @@ public class TimelyReport {
     private String founderUserId;
     private String startupId;
 
+    private boolean draftReport;
+
     private String title;
     private String reportingPeriod;
 
@@ -38,6 +40,8 @@ public class TimelyReport {
 
     // ✅ List of structured attachment objects
     private List<TimelyReportAttachment> attachments;
+
+    private TimelyReportAttachment reportPdf;
 
     private List<String> investorUserIds;
 

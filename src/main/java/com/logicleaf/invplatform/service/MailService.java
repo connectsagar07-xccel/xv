@@ -7,7 +7,12 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.stereotype.Service;
+
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
+
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.io.ByteArrayResource;
 
 @Service
 @RequiredArgsConstructor
@@ -35,23 +40,74 @@ public class MailService {
         mailSender.send(message);
     }
 
+    public void sendTimelyReportWithPdf(
+            String founderEmail,
+            String investorEmail,
+            String startupName,
+            TimelyReport report,
+            byte[] pdfBytes,
+            String pdfFileName
+    ) throws MessagingException {
+
+        MimeMessage message = mailSender.createMimeMessage();
+        MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
+
+        helper.setFrom(founderEmail);
+        helper.setTo(investorEmail);
+        helper.setSubject("Monthly Report: " + startupName + " (" +
+                (report.getReportingPeriod() != null ? report.getReportingPeriod() :
+                        LocalDate.now().format(DateTimeFormatter.ofPattern("MMM yyyy"))) + ")");
+
+        // ✉️ Email body
+        helper.setText(buildEmailBodyForTimelyReport(report, startupName), false);
+
+        // 📎 Attach PDF
+
+        helper.addAttachment(pdfFileName, new ByteArrayResource(pdfBytes));
+
+        mailSender.send(message);
+    }
+
+    /**
+     * 🧩 Helper — Build readable email body
+     */
     private String buildEmailBodyForTimelyReport(TimelyReport report, String startupName) {
         StringBuilder sb = new StringBuilder();
-        sb.append("Hello,\n\n");
-        sb.append("You have received a new update from ").append(startupName).append(":\n\n");
-        sb.append("📊 Title: ").append(report.getTitle()).append("\n");
-        sb.append("🗓 Reporting Period: ").append(report.getReportingPeriod()).append("\n\n");
-        sb.append("💰 Monthly Revenue: ₹").append(report.getMonthlyRevenue()).append("\n");
-        sb.append("🔥 Monthly Burn: ₹").append(report.getMonthlyBurn()).append("\n");
-        sb.append("💵 Cash Runway: ").append(report.getCashRunway()).append(" months\n");
-        sb.append("👥 Team Size: ").append(report.getTeamSize()).append("\n\n");
-        sb.append("🏆 Key Achievements:\n").append(report.getKeyAchievements()).append("\n\n");
-        sb.append("⚙️ Challenges & Learnings:\n").append(report.getChallengesAndLearnings()).append("\n\n");
-        sb.append("📈 Other Metrics:\n").append(report.getOtherKeyMetrics()).append("\n\n");
-        sb.append("🙏 Asks from Investors:\n").append(report.getAsksFromInvestors()).append("\n\n");
-        sb.append("---\nSent via Logicleaf Investor Platform");
+        sb.append("Dear Investor,\n\n")
+                .append("Please find attached the latest monthly report from *").append(startupName).append("*.\n\n")
+                .append("Highlights:\n")
+                .append("• Monthly Revenue: ₹").append(report.getMonthlyRevenue() != null ? report.getMonthlyRevenue() : "0").append("L\n")
+                .append("• Monthly Burn: ₹").append(report.getMonthlyBurn() != null ? report.getMonthlyBurn() : "0").append("L\n")
+                .append("• Cash Runway: ").append(report.getCashRunway() != null ? report.getCashRunway() + " months" : "N/A").append("\n")
+                .append("• Team Size: ").append(report.getTeamSize() != null ? report.getTeamSize() : "N/A").append("\n\n")
+                .append("Key Achievements:\n")
+                .append(report.getKeyAchievements() != null ? report.getKeyAchievements() : "• Launched new analytics dashboard\n• Closed partnership with Microsoft for Startups\n\n")
+                .append("Challenges & Learnings:\n")
+                .append(report.getChallengesAndLearnings() != null ? report.getChallengesAndLearnings() : "• Server downtime resolved during peak hours\n• Mobile app updates in progress\n\n")
+                .append("Best Regards,\n")
+                .append(startupName)
+                .append("\n\n— Powered by InvestPlatform");
+
         return sb.toString();
     }
+
+    // private String buildEmailBodyForTimelyReport(TimelyReport report, String startupName) {
+    //     StringBuilder sb = new StringBuilder();
+    //     sb.append("Hello,\n\n");
+    //     sb.append("You have received a new update from ").append(startupName).append(":\n\n");
+    //     sb.append("📊 Title: ").append(report.getTitle()).append("\n");
+    //     sb.append("🗓 Reporting Period: ").append(report.getReportingPeriod()).append("\n\n");
+    //     sb.append("💰 Monthly Revenue: ₹").append(report.getMonthlyRevenue()).append("\n");
+    //     sb.append("🔥 Monthly Burn: ₹").append(report.getMonthlyBurn()).append("\n");
+    //     sb.append("💵 Cash Runway: ").append(report.getCashRunway()).append(" months\n");
+    //     sb.append("👥 Team Size: ").append(report.getTeamSize()).append("\n\n");
+    //     sb.append("🏆 Key Achievements:\n").append(report.getKeyAchievements()).append("\n\n");
+    //     sb.append("⚙️ Challenges & Learnings:\n").append(report.getChallengesAndLearnings()).append("\n\n");
+    //     sb.append("📈 Other Metrics:\n").append(report.getOtherKeyMetrics()).append("\n\n");
+    //     sb.append("🙏 Asks from Investors:\n").append(report.getAsksFromInvestors()).append("\n\n");
+    //     sb.append("---\nSent via Logicleaf Investor Platform");
+    //     return sb.toString();
+    // }
 
     public void sendConnectionEmail(String toEmail, String senderName, String mappingId, boolean fromFounder)
             throws MessagingException {

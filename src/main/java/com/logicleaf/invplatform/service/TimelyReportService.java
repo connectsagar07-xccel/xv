@@ -1,17 +1,17 @@
 package com.logicleaf.invplatform.service;
 
 import com.logicleaf.invplatform.exception.BadRequestException;
+import com.logicleaf.invplatform.exception.ResourceNotFoundException;
+
 import com.logicleaf.invplatform.model.*;
 import com.logicleaf.invplatform.repository.*;
-import jakarta.mail.MessagingException;
 import lombok.RequiredArgsConstructor;
+
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -24,8 +24,11 @@ public class TimelyReportService {
     private final StartupRepository startupRepository;
     private final MailService mailService;
 
-    // 🌍 Global storage folder for attachments
-    private static final String ATTACHMENT_DIR = "E:/invplatform/uploads/attachments/";
+    @Autowired
+    private PdfGeneratorService pdfGeneratorService;
+
+    @Autowired
+    private FileStorageService fileStorageService;
 
 
     public TimelyReport createTimelyReport(TimelyReport report, MultipartFile[] attachments) {
@@ -35,9 +38,17 @@ public class TimelyReportService {
 
         // Validate founder & startup
         User founder = userRepository.findById(report.getFounderUserId())
-                .orElseThrow(() -> new BadRequestException("Founder not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Founder not found"));
         Startup startup = startupRepository.findByFounderUserId(founder.getId())
-                .orElseThrow(() -> new BadRequestException("Startup not found for founder"));
+                .orElseThrow(() -> new ResourceNotFoundException("Startup not found for founder"));
+
+        if (report.isDraftReport()) {
+            boolean draftExists = timelyReportRepository.existsByStartupIdAndDraftReportTrue(startup.getId());
+            if (draftExists) {
+                throw new BadRequestException(
+                        "A draft report already exists. Please update or delete it before creating a new one.");
+            }
+        }
 
         // 💾 Save all uploaded files
         if (attachments != null && attachments.length > 0) {
@@ -51,23 +62,55 @@ public class TimelyReportService {
 
         TimelyReport savedReport = timelyReportRepository.save(report);
 
-        // ✉️ Send emails to all investors
-        if (report.getInvestorUserIds() != null && !report.getInvestorUserIds().isEmpty()) {
-            report.getInvestorUserIds().forEach(investorUserId ->
-                    userRepository.findById(investorUserId).ifPresent(investorUser -> {
+        // ✅ Generate PDF report
+        byte[] pdfBytes = pdfGeneratorService.generateTimelyReportPdf(savedReport, startup.getStartupName());
+
+        TimelyReportAttachment pdfAttachment = savePdfAttachment(pdfBytes, report.getTitle(), startup.getStartupName());
+        report.setReportPdf(pdfAttachment);
+
+        // ✅ Send to investors
+        if(!report.isDraftReport()){
+            if (report.getInvestorUserIds() != null && !report.getInvestorUserIds().isEmpty()) {
+                for (String investorUserId : report.getInvestorUserIds()) {
+                    userRepository.findById(investorUserId).ifPresent(investor -> {
                         try {
-                            mailService.sendTimelyReportEmail(savedReport,
+                            mailService.sendTimelyReportWithPdf(
                                     founder.getEmail(),
-                                    investorUser.getEmail(),
-                                    startup.getStartupName());
-                        } catch (MessagingException e) {
-                            System.err.println("Failed to send email to " + investorUser.getEmail() + ": " + e.getMessage());
+                                    investor.getEmail(),
+                                    startup.getStartupName(),
+                                    savedReport,
+                                    pdfBytes,
+                                    pdfAttachment.getFileName());
+                        } catch (Exception e) {
+                            System.err.println("Failed to send PDF email: " + e.getMessage());
                         }
-                    })
-            );
+                    });
+                }
+            }
         }
+        
 
         return savedReport;
+    }
+
+    // 💾 Save PDF file to disk and return reference
+    private TimelyReportAttachment savePdfAttachment(byte[] pdfBytes, String title, String startupName) {
+        try {
+
+            String fileName = startupName + "_" + title + ".pdf";
+            String safeFileName = fileStorageService.getUniqueFileName(fileName);
+
+            // Use global file storage service to save file
+            String savedPath = fileStorageService.uploadFile(safeFileName, pdfBytes);
+
+            return TimelyReportAttachment.builder()
+                    .fileName(safeFileName)
+                    .filePath(savedPath)
+                    .build();
+
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to save generated PDF report: " + e.getMessage(), e);
+        }
     }
 
     /**
@@ -76,31 +119,24 @@ public class TimelyReportService {
     private List<TimelyReportAttachment> saveAttachments(MultipartFile[] attachments) {
         List<TimelyReportAttachment> savedFiles = new ArrayList<>();
 
-        try {
-            Path dirPath = Paths.get(ATTACHMENT_DIR);
-            if (!Files.exists(dirPath)) {
-                Files.createDirectories(dirPath);
+        for (MultipartFile file : attachments) {
+            try {
+                String fileName = (file.getOriginalFilename() != null)
+                        ? file.getOriginalFilename().replaceAll("[^a-zA-Z0-9_.\\-]", "_")
+                        : "attachment";
+                        
+                String safeFileName = fileStorageService.getUniqueFileName(fileName);
+                // Save using FileStorageService
+                String savedPath = fileStorageService.uploadFile(safeFileName, file.getBytes());
+
+                savedFiles.add(TimelyReportAttachment.builder()
+                        .fileName(safeFileName)
+                        .filePath(savedPath)
+                        .build());
+
+            } catch (IOException e) {
+                throw new RuntimeException("Failed to save attachment: " + e.getMessage(), e);
             }
-
-            for (MultipartFile file : attachments) {
-                // Generate unique file name
-                String fileName = System.currentTimeMillis() + "_" + file.getOriginalFilename();
-                Path filePath = dirPath.resolve(fileName);
-
-                // Save file to disk
-                file.transferTo(filePath.toFile());
-
-                // Build attachment object
-                TimelyReportAttachment attachment = TimelyReportAttachment.builder()
-                        .fileName(fileName)
-                        .filePath(filePath.toAbsolutePath().toString())
-                        .build();
-
-                savedFiles.add(attachment);
-            }
-
-        } catch (IOException e) {
-            throw new RuntimeException("Failed to save attachments: " + e.getMessage());
         }
 
         return savedFiles;

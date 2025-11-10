@@ -9,4 +9,5 @@ import java.util.List;
 @Repository
 public interface TimelyReportRepository extends MongoRepository<TimelyReport, String> {
     List<TimelyReport> findByFounderUserId(String founderUserId);
+    boolean existsByStartupIdAndDraftReportTrue(String startupId);
 }
