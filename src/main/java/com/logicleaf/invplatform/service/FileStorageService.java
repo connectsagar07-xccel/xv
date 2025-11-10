@@ -1,7 +1,9 @@
 package com.logicleaf.invplatform.service;
 
+import org.springframework.beans.factory.annotation.Value;
 // import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+
 
 import java.io.IOException;
 import java.nio.file.*;
@@ -10,8 +12,8 @@ import java.util.UUID;
 @Service
 public class FileStorageService {
 
-    // @Value("${ATTACHMENT_DIR:uploads/files}")
-    private String ATTACHMENT_DIR = "E:/invplatform/uploads/attachments/";
+    @Value("${FILE_STORAGE_DIR}")
+    private String fileStorageDir;
 
     /**
      * Upload a file with the same name.
@@ -22,7 +24,7 @@ public class FileStorageService {
      */
     public String uploadFile(String fileName, byte[] fileBytes) {
         try {
-            Path dirPath = Paths.get(ATTACHMENT_DIR);
+            Path dirPath = Paths.get(fileStorageDir);
             if (!Files.exists(dirPath)) {
                 Files.createDirectories(dirPath);
             }
@@ -61,12 +63,12 @@ public class FileStorageService {
     /**
      * Download a file as byte array.
      *
-     * @param fileName The file name (located inside ATTACHMENT_DIR)
+     * @param fileName The file name (located inside fileStorageDir)
      * @return File bytes
      */
     public byte[] downloadFile(String fileName) {
         try {
-            Path filePath = Paths.get(ATTACHMENT_DIR).resolve(fileName);
+            Path filePath = Paths.get(fileStorageDir).resolve(fileName);
             if (!Files.exists(filePath)) {
                 throw new RuntimeException("File not found: " + fileName);
             }
