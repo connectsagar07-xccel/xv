@@ -23,13 +23,13 @@ public class TimelyReportService {
     private final UserRepository userRepository;
     private final StartupRepository startupRepository;
     private final MailService mailService;
+    private final InvestorService investorService;
 
     @Autowired
     private PdfGeneratorService pdfGeneratorService;
 
     @Autowired
     private FileStorageService fileStorageService;
-
 
     public TimelyReport createTimelyReport(TimelyReport report, MultipartFile[] attachments) {
         if (report.getTitle() == null || report.getTitle().isBlank()) {
@@ -69,26 +69,28 @@ public class TimelyReportService {
         report.setReportPdf(pdfAttachment);
 
         // ✅ Send to investors
-        if(!report.isDraftReport()){
+        if (!report.isDraftReport()) {
             if (report.getInvestorUserIds() != null && !report.getInvestorUserIds().isEmpty()) {
-                for (String investorUserId : report.getInvestorUserIds()) {
-                    userRepository.findById(investorUserId).ifPresent(investor -> {
-                        try {
-                            mailService.sendTimelyReportWithPdf(
-                                    founder.getEmail(),
-                                    investor.getEmail(),
-                                    startup.getStartupName(),
-                                    savedReport,
-                                    pdfBytes,
-                                    pdfAttachment.getFileName());
-                        } catch (Exception e) {
-                            System.err.println("Failed to send PDF email: " + e.getMessage());
-                        }
-                    });
+                for (String investorId : report.getInvestorUserIds()) {
+                    try {
+                        Investor investor = investorService.findById(investorId);
+                        User investorUser = userRepository.findById(investor.getUserId())
+                                .orElseThrow(() -> new ResourceNotFoundException(
+                                        "User not found for investor: " + investorId));
+
+                        mailService.sendTimelyReportWithPdf(
+                                founder.getEmail(),
+                                investorUser.getEmail(), // ✅ actual email from user
+                                startup.getStartupName(),
+                                savedReport,
+                                pdfBytes,
+                                pdfAttachment.getFileName());
+                    } catch (Exception e) {
+                        System.err.println("⚠️ Failed to send email to investor " + investorId + ": " + e.getMessage());
+                    }
                 }
             }
         }
-        
 
         return savedReport;
     }
@@ -124,7 +126,7 @@ public class TimelyReportService {
                 String fileName = (file.getOriginalFilename() != null)
                         ? file.getOriginalFilename().replaceAll("[^a-zA-Z0-9_.\\-]", "_")
                         : "attachment";
-                        
+
                 String safeFileName = fileStorageService.getUniqueFileName(fileName);
                 // Save using FileStorageService
                 String savedPath = fileStorageService.uploadFile(safeFileName, file.getBytes());
@@ -140,6 +142,113 @@ public class TimelyReportService {
         }
 
         return savedFiles;
+    }
+
+    public TimelyReport updateTimelyReport(String reportId, TimelyReport updatedReport, MultipartFile[] attachments) {
+        // Fetch existing report
+        TimelyReport existing = timelyReportRepository.findById(reportId)
+                .orElseThrow(() -> new ResourceNotFoundException("Timely report not found: " + reportId));
+
+        // Verify founder (security check)
+        if (!existing.getFounderUserId().equals(updatedReport.getFounderUserId())) {
+            throw new BadRequestException("You are not authorized to update this report.");
+        }
+
+        // Fetch founder and startup
+        User founder = userRepository.findById(updatedReport.getFounderUserId())
+                .orElseThrow(() -> new ResourceNotFoundException("Founder not found"));
+        Startup startup = startupRepository.findByFounderUserId(founder.getId())
+                .orElseThrow(() -> new ResourceNotFoundException("Startup not found for founder"));
+
+        // Delete previous attachments (if any)
+        if (existing.getAttachments() != null && !existing.getAttachments().isEmpty()) {
+            for (TimelyReportAttachment oldFile : existing.getAttachments()) {
+                try {
+                    fileStorageService.deleteFile(oldFile.getFilePath());
+                } catch (Exception e) {
+                    System.err.println("⚠️ Failed to delete old attachment: " + oldFile.getFilePath());
+                }
+            }
+        }
+
+        // Delete old generated PDF (if any)
+        if (existing.getReportPdf() != null) {
+            try {
+                fileStorageService.deleteFile(existing.getReportPdf().getFilePath());
+            } catch (Exception e) {
+                System.err.println("⚠️ Failed to delete old PDF: " + e.getMessage());
+            }
+        }
+
+        // Clear old attachments from DB reference
+        existing.setAttachments(null);
+        existing.setReportPdf(null);
+
+        // Upload new attachments
+        List<TimelyReportAttachment> newFiles = new ArrayList<>();
+        if (attachments != null && attachments.length > 0) {
+            newFiles = saveAttachments(attachments);
+        }
+        existing.setAttachments(newFiles);
+
+        // Update report data fields
+        existing.setTitle(updatedReport.getTitle());
+        existing.setReportingPeriod(updatedReport.getReportingPeriod());
+        existing.setKeyMetrics(updatedReport.getKeyMetrics());
+        existing.setMonthlyRevenue(updatedReport.getMonthlyRevenue());
+        existing.setMonthlyBurn(updatedReport.getMonthlyBurn());
+        existing.setCashRunway(updatedReport.getCashRunway());
+        existing.setTeamSize(updatedReport.getTeamSize());
+        existing.setKeyAchievements(updatedReport.getKeyAchievements());
+        existing.setChallengesAndLearnings(updatedReport.getChallengesAndLearnings());
+        existing.setOtherKeyMetrics(updatedReport.getOtherKeyMetrics());
+        existing.setAsksFromInvestors(updatedReport.getAsksFromInvestors());
+        existing.setDraftReport(updatedReport.isDraftReport());
+        existing.setInvestorUserIds(updatedReport.getInvestorUserIds());
+        existing.setUpdatedAt(System.currentTimeMillis());
+
+        TimelyReport savedReport = timelyReportRepository.save(existing);
+
+        byte[] pdfBytes = pdfGeneratorService.generateTimelyReportPdf(savedReport, startup.getStartupName());
+        TimelyReportAttachment pdfAttachment = savePdfAttachment(pdfBytes, savedReport.getTitle(),
+                startup.getStartupName());
+        savedReport.setReportPdf(pdfAttachment);
+        timelyReportRepository.save(savedReport);
+
+        // ✅ Optional: send updated PDF to investors (if not draft)
+        if (!savedReport.isDraftReport() && savedReport.getInvestorUserIds() != null) {
+            for (String investorId : savedReport.getInvestorUserIds()) {
+                try {
+                    Investor investor = investorService.findById(investorId);
+                    User investorUser = userRepository.findById(investor.getUserId())
+                            .orElseThrow(
+                                    () -> new ResourceNotFoundException("User not found for investor: " + investorId));
+
+                    mailService.sendTimelyReportWithPdf(
+                            founder.getEmail(),
+                            investorUser.getEmail(),
+                            startup.getStartupName(),
+                            savedReport,
+                            pdfBytes,
+                            pdfAttachment.getFileName());
+                } catch (Exception e) {
+                    System.err.println(
+                            "⚠️ Failed to send updated report email to investor " + investorId + ": " + e.getMessage());
+                }
+            }
+        }
+
+        return savedReport;
+    }
+
+    public TimelyReport getDraftTimelyReport(String founderUserId) {
+        Startup startup = startupRepository.findByFounderUserId(founderUserId)
+                .orElseThrow(() -> new ResourceNotFoundException("Startup not found for founder: " + founderUserId));
+
+        TimelyReport draft = timelyReportRepository.findByStartupIdAndDraftReportTrue(startup.getId())
+                .orElseThrow(() -> new ResourceNotFoundException("Startup not found for founder: " + founderUserId));
+
+        return draft;
     }
 
     public List<TimelyReport> getReportsByFounder(String founderUserId) {

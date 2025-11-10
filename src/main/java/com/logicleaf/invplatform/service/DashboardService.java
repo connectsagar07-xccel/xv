@@ -55,9 +55,9 @@ public class DashboardService {
                 // KPI donut sample (mock)
                 Map<String, Double> kpi = new LinkedHashMap<>();
                 kpi.put("NPS", 30.0);
-                kpi.put("Churn", 15.0);
+                kpi.put("Churn", 2.0);
                 kpi.put("LTV", 35.0);
-                kpi.put("CAC", 20.0);
+                kpi.put("CAC", 10.0);
 
                 // Monthly goal progress (sample)
                 Map<String, Integer> goals = Map.of(
@@ -107,7 +107,11 @@ public class DashboardService {
 
         private double fetchMonthlyExpenses(String founderEmail, int year, int month) {
                 try {
-                        JsonNode expenses = zohoService.fetchMonthlyExpensesForFounder(founderEmail, year, month);
+                        JsonNode expenses = zohoService.fetchExpensesForFounder(
+                                        founderEmail,
+                                        String.format("%04d-%02d-01", year, month),
+                                        String.format("%04d-%02d-%02d", year, month,
+                                                        LocalDate.of(year, month, 1).lengthOfMonth()));
                         if (expenses.has("expenses")) {
                                 double total = 0.0;
                                 for (JsonNode exp : expenses.get("expenses")) {

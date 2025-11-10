@@ -4,6 +4,7 @@ import com.logicleaf.invplatform.dto.IntegrationStatusResponse;
 import com.logicleaf.invplatform.model.Integration;
 import com.logicleaf.invplatform.model.IntegrationStatus;
 import com.logicleaf.invplatform.model.IntegrationType;
+import com.logicleaf.invplatform.model.Startup;
 import com.logicleaf.invplatform.repository.IntegrationRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -16,9 +17,13 @@ import java.util.stream.Collectors;
 public class IntegrationService {
 
     private final IntegrationRepository integrationRepository;
+    private final StartupService startupService;
 
-    public List<IntegrationStatusResponse> getIntegrationStatuses(String startupId) {
-        List<Integration> integrations = integrationRepository.findByStartupId(startupId);
+    public List<IntegrationStatusResponse> getIntegrationStatuses(String founderEmail) {
+
+        Startup startup = startupService.getStartupByFounderEmail(founderEmail);
+            
+        List<Integration> integrations = integrationRepository.findByStartupId(startup.getId());
 
         Map<IntegrationType, Integration> integrationMap = integrations.stream()
                 .collect(Collectors.toMap(Integration::getIntegrationType, i -> i));

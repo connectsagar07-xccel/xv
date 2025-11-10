@@ -84,24 +84,6 @@ public class ZohoController {
         }
     }
 
-    @GetMapping("/expenses/monthly")
-    @PreAuthorize("hasRole('FOUNDER')")
-    public ResponseEntity<?> getMonthlyExpenses(
-            @AuthenticationPrincipal UserDetails userDetails,
-            @RequestParam int year,
-            @RequestParam int month) {
-        try {
-            JsonNode data = zohoService.fetchMonthlyExpensesForFounder(userDetails.getUsername(), year, month);
-            return ResponseEntity.ok(Map.of(
-                    "status", "success",
-                    "message", "Monthly expenses fetched successfully.",
-                    "data", data));
-        } catch (RuntimeException e) {
-            return ResponseEntity.badRequest().body(Map.of(
-                    "status", "error",
-                    "message", "Failed to fetch monthly expenses: " + e.getMessage()));
-        }
-    }
-    
+
 
 }

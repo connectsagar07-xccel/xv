@@ -1,8 +1,13 @@
 package com.logicleaf.invplatform.service;
 
-import com.logicleaf.invplatform.model.OAuthToken;
+import com.logicleaf.invplatform.exception.BadRequestException;
+import com.logicleaf.invplatform.exception.ResourceNotFoundException;
+import com.logicleaf.invplatform.model.Integration;
+import com.logicleaf.invplatform.model.IntegrationStatus;
+import com.logicleaf.invplatform.model.IntegrationType;
 import com.logicleaf.invplatform.model.Startup;
 import com.logicleaf.invplatform.model.User;
+import com.logicleaf.invplatform.repository.IntegrationRepository;
 import com.logicleaf.invplatform.repository.StartupRepository;
 import com.logicleaf.invplatform.repository.UserRepository;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -14,14 +19,10 @@ import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ArrayNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 
-import java.time.Instant;
-import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
-import java.time.temporal.TemporalAdjusters;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @Service
 public class ZohoService {
@@ -47,7 +48,10 @@ public class ZohoService {
     @Autowired
     private ObjectMapper objectMapper;
 
-    private OAuthToken currentToken;
+    @Autowired
+    private IntegrationRepository integrationRepository;
+
+    private static final Logger logger = LoggerFactory.getLogger(ZohoService.class);
 
     private static final String ZOHO_AUTH_URL = "https://accounts.zoho.in/oauth/v2/auth";
     private static final String ZOHO_TOKEN_URL = "https://accounts.zoho.in/oauth/v2/token";
@@ -83,279 +87,176 @@ public class ZohoService {
 
         JsonNode response = restTemplate.postForObject(ZOHO_TOKEN_URL, request, JsonNode.class);
 
-        if (response != null && response.has("access_token")) {
+        if (response == null || !response.has("access_token")) {
+            throw new RuntimeException("Failed to obtain Zoho access token.");
+        }
 
-            String accessToken = response.get("access_token").asText();
-            String refreshToken = response.has("refresh_token") ? response.get("refresh_token").asText() : null;
-            String apiDomain = response.has("api_domain") ? response.get("api_domain").asText()
-                    : "https://www.zohoapis.com";
-            long expiresIn = response.get("expires_in").asLong();
+        String accessToken = response.get("access_token").asText();
+        String refreshToken = response.has("refresh_token") ? response.get("refresh_token").asText() : null;
+        long expiresIn = response.get("expires_in").asLong();
 
-            currentToken = OAuthToken.builder()
+        // Fetch organization ID from Zoho Books
+        String orgUrl = "https://books.zoho.in/api/v3/organizations";
+        HttpHeaders orgHeaders = new HttpHeaders();
+        orgHeaders.set("Authorization", "Zoho-oauthtoken " + accessToken);
+        HttpEntity<Void> orgEntity = new HttpEntity<>(orgHeaders);
+
+        ResponseEntity<JsonNode> orgResp = restTemplate.exchange(orgUrl, HttpMethod.GET, orgEntity, JsonNode.class);
+        String organizationId = null;
+        if (orgResp.getStatusCode().is2xxSuccessful() && orgResp.getBody() != null) {
+            JsonNode organizations = orgResp.getBody().get("organizations");
+            if (organizations != null && organizations.isArray() && organizations.size() > 0) {
+                organizationId = organizations.get(0).path("organization_id").asText();
+            }
+        }
+
+        Integration integration = integrationRepository.findByStartupIdAndIntegrationType(
+                startup.getId(), IntegrationType.ZOHO);
+
+        if (integration == null) {
+            integration = Integration.builder()
+                    .startupId(startup.getId())
+                    .integrationType(IntegrationType.ZOHO)
+                    .status(IntegrationStatus.CONNECTED)
                     .accessToken(accessToken)
                     .refreshToken(refreshToken)
-                    .apiDomain(apiDomain)
-                    .expiresAt(Instant.now().plusSeconds(expiresIn))
+                    .expiresAt(LocalDateTime.now().plusSeconds(expiresIn))
+                    .connectionConfig(organizationId != null
+                            ? "{\"organization_id\": \"" + organizationId + "\"}"
+                            : null)
+                    .lastSyncTime(LocalDateTime.now())
                     .build();
-
-            startup.setZohoAccessToken(accessToken);
-            if (refreshToken != null) {
-                startup.setZohoRefreshToken(refreshToken);
-            }
-            startup.setZohoTokenExpiryTime(LocalDateTime.now().plusSeconds(expiresIn));
-
-            // Fetch organization ID from Zoho Books
-            String orgUrl = "https://books.zoho.in/api/v3/organizations";
-            HttpHeaders orgHeaders = new HttpHeaders();
-            orgHeaders.set("Authorization", "Zoho-oauthtoken " + accessToken);
-            HttpEntity<Void> orgEntity = new HttpEntity<>(orgHeaders);
-
-            ResponseEntity<JsonNode> orgResp = restTemplate.exchange(orgUrl, HttpMethod.GET, orgEntity, JsonNode.class);
-            if (orgResp.getStatusCode().is2xxSuccessful() && orgResp.getBody() != null) {
-                JsonNode organizations = orgResp.getBody().get("organizations");
-                if (organizations != null && organizations.isArray() && organizations.size() > 0) {
-                    // String targetOrgName = "Your Organization Name";
-                    // String organizationId = null;
-                    // for (JsonNode org : organizations) {
-                    // if (org.has("name") && targetOrgName.equals(org.get("name").asText())) {
-                    // organizationId = org.get("organization_id").asText();
-                    // break;
-                    // }
-                    // }
-                    // if (organizationId != null) {
-                    // startup.setZohoOrganizationId(organizationId);
-                    // }
-                    String organizationId = organizations.get(0).get("organization_id").asText();
-                    startup.setZohoOrganizationId(organizationId);
-                }
-            }
-
-            startupRepository.save(startup);
         } else {
-            throw new RuntimeException("Failed to get Zoho access token.");
+            integration.setStatus(IntegrationStatus.CONNECTED);
+            integration.setAccessToken(accessToken);
+            integration.setRefreshToken(refreshToken);
+            integration.setExpiresAt(LocalDateTime.now().plusSeconds(expiresIn));
+            integration.setLastSyncTime(LocalDateTime.now());
+            if (organizationId != null) {
+                integration.setConnectionConfig("{\"organization_id\": \"" + organizationId + "\"}");
+            }
         }
+        integrationRepository.save(integration);
+
     }
 
-    // Placeholder for fetching metrics
-    public void fetchAndSaveMetrics(String startupId) {
-        // Logic to use the access token to call Zoho APIs will go here.
-        // This will involve checking if the token is expired and refreshing if needed.
-        // Then, use the OpenAPI generated clients to fetch data.
-    }
-
-    public String fetchSalesOrders(String organizationId) {
-        ensureValidToken();
-
-        String url = currentToken.getApiDomain() + "/books/v3/salesorders?organization_id=" + organizationId;
-
-        HttpHeaders headers = new HttpHeaders();
-        headers.setBearerAuth(currentToken.getAccessToken());
-
-        HttpEntity<Void> entity = new HttpEntity<>(headers);
-        ResponseEntity<String> resp = restTemplate.exchange(url, HttpMethod.GET, entity, String.class);
-
-        return resp.getBody();
+    private String extractOrganizationId(Integration integration) {
+        try {
+            if (integration.getConnectionConfig() != null) {
+                JsonNode config = objectMapper.readTree(integration.getConnectionConfig());
+                return config.path("organization_id").asText(null);
+            }
+        } catch (Exception e) {
+            logger.error("❌ Failed to parse organization_id from integration config: {}", e.getMessage());
+        }
+        return null;
     }
 
     public JsonNode fetchSalesOrdersForFounder(String founderEmail, String startDate, String endDate) {
-        // Step 1: Find the user
         User user = userRepository.findByEmail(founderEmail)
-                .orElseThrow(() -> new RuntimeException("User not found: " + founderEmail));
+                .orElseThrow(() -> new ResourceNotFoundException("User not found: " + founderEmail));
 
-        // Step 2: Find their startup
         Startup startup = startupRepository.findByFounderUserId(user.getId())
-                .orElseThrow(() -> new RuntimeException("Startup not found for user: " + founderEmail));
+                .orElseThrow(() -> new ResourceNotFoundException("Startup not found for user: " + founderEmail));
 
-        // Step 3: Ensure Zoho is linked
-        if (startup.getZohoAccessToken() == null || startup.getZohoOrganizationId() == null) {
-            throw new RuntimeException("Zoho account not linked for this startup.");
+        Integration integration = integrationRepository.findByStartupIdAndIntegrationType(
+                startup.getId(), IntegrationType.ZOHO);
+
+        if (integration == null || integration.getAccessToken() == null) {
+            throw new BadRequestException("Zoho integration not connected for this startup.");
         }
 
-        // Step 4: Ensure token validity (refresh if needed)
-        ensureValidToken(startup);
+        ensureValidToken(integration);
 
-        // Step 5: Build URL dynamically
+        String organizationId = extractOrganizationId(integration);
+        if (organizationId == null) {
+            throw new BadRequestException("Zoho organization ID not found in integration configuration.");
+        }
+
         StringBuilder urlBuilder = new StringBuilder("https://www.zohoapis.in/books/v3/salesorders");
-        urlBuilder.append("?organization_id=").append(startup.getZohoOrganizationId());
-
-        if (startDate != null && !startDate.isBlank()) {
+        urlBuilder.append("?organization_id=").append(organizationId);
+        if (startDate != null && !startDate.isBlank())
             urlBuilder.append("&date_start=").append(startDate);
-        }
-        if (endDate != null && !endDate.isBlank()) {
+        if (endDate != null && !endDate.isBlank())
             urlBuilder.append("&date_end=").append(endDate);
-        }
 
-        // Step 6: Setup headers
         HttpHeaders headers = new HttpHeaders();
-        headers.set("Authorization", "Zoho-oauthtoken " + startup.getZohoAccessToken());
+        headers.set("Authorization", "Zoho-oauthtoken " + integration.getAccessToken());
         headers.set("Accept", "application/json");
-
         HttpEntity<Void> entity = new HttpEntity<>(headers);
 
-        // Step 7: Execute request
-        ResponseEntity<String> resp = restTemplate.exchange(urlBuilder.toString(), HttpMethod.GET, entity,
-                String.class);
-
-        if (!resp.getStatusCode().is2xxSuccessful()) {
-            throw new RuntimeException("Zoho API returned " + resp.getStatusCodeValue() + ": " + resp.getBody());
-        }
-
-        // Step 8: Parse and return JSON
         try {
-            return objectMapper.readTree(resp.getBody());
-        } catch (Exception e) {
-            throw new RuntimeException("Failed to parse Zoho response: " + e.getMessage());
-        }
-    }
+            ResponseEntity<String> resp = restTemplate.exchange(urlBuilder.toString(), HttpMethod.GET, entity,
+                    String.class);
 
-    public JsonNode fetchExpensesForFounder(String founderEmail, String startDate, String endDate) {
-        // Step 1: Identify the founder user
-        User user = userRepository.findByEmail(founderEmail)
-                .orElseThrow(() -> new RuntimeException("User not found: " + founderEmail));
-
-        // Step 2: Find their startup record
-        Startup startup = startupRepository.findByFounderUserId(user.getId())
-                .orElseThrow(() -> new RuntimeException("Startup not found for user: " + founderEmail));
-
-        // Step 3: Check Zoho linkage
-        if (startup.getZohoAccessToken() == null || startup.getZohoOrganizationId() == null) {
-            throw new RuntimeException("Zoho account not linked for this startup.");
-        }
-
-        // Step 4: Ensure valid or refreshed token
-        ensureValidToken(startup);
-
-        // Step 5: Build Zoho Expenses API URL dynamically
-        StringBuilder urlBuilder = new StringBuilder("https://www.zohoapis.in/books/v3/expenses");
-        urlBuilder.append("?organization_id=").append(startup.getZohoOrganizationId());
-
-        // Optional query params (Zoho expects YYYY-MM-DD)
-        if (startDate != null && !startDate.isEmpty()) {
-            urlBuilder.append("&date_start=").append(startDate);
-        }
-        if (endDate != null && !endDate.isEmpty()) {
-            urlBuilder.append("&date_end=").append(endDate);
-        }
-
-        // Step 6: Prepare headers
-        HttpHeaders headers = new HttpHeaders();
-        headers.set("Authorization", "Zoho-oauthtoken " + startup.getZohoAccessToken());
-        headers.set("Accept", "application/json");
-
-        HttpEntity<Void> entity = new HttpEntity<>(headers);
-
-        // Step 7: Call Zoho API
-        ResponseEntity<String> resp = restTemplate.exchange(urlBuilder.toString(), HttpMethod.GET, entity,
-                String.class);
-
-        if (!resp.getStatusCode().is2xxSuccessful()) {
-            throw new RuntimeException("Zoho API returned " + resp.getStatusCodeValue() + ": " + resp.getBody());
-        }
-
-        // Step 8: Parse JSON response
-        try {
-            return objectMapper.readTree(resp.getBody());
-        } catch (Exception e) {
-            throw new RuntimeException("Failed to parse Zoho response: " + e.getMessage());
-        }
-    }
-
-    public JsonNode fetchMonthlyExpensesForFounder(String founderEmail, int year, int month) {
-        // 1) Resolve founder → startup
-        User user = userRepository.findByEmail(founderEmail)
-                .orElseThrow(() -> new RuntimeException("User not found: " + founderEmail));
-
-        Startup startup = startupRepository.findByFounderUserId(user.getId())
-                .orElseThrow(() -> new RuntimeException("Startup not found for user: " + founderEmail));
-
-        if (startup.getZohoAccessToken() == null || startup.getZohoOrganizationId() == null) {
-            throw new RuntimeException("Zoho account not linked for this startup.");
-        }
-        if (startup.getZohoTokenExpiryTime() != null &&
-                startup.getZohoTokenExpiryTime().isBefore(java.time.LocalDateTime.now())) {
-            // (Optional) plug refresh flow here
-            throw new RuntimeException("Zoho access token expired. Please reauthorize.");
-        }
-
-        ensureValidToken(startup);
-
-        // 2) Compute month window
-        LocalDate start = LocalDate.of(year, month, 1);
-        LocalDate end = start.with(TemporalAdjusters.lastDayOfMonth());
-        DateTimeFormatter fmt = DateTimeFormatter.ofPattern("yyyy-MM-dd");
-
-        // 3) Pick correct API domain (prefer dynamic; fallback to IN)
-        String apiDomain = (currentToken != null && currentToken.getApiDomain() != null)
-                ? currentToken.getApiDomain()
-                : "https://www.zohoapis.in";
-
-        // 4) Prepare headers
-        HttpHeaders headers = new HttpHeaders();
-        headers.set("Authorization", "Zoho-oauthtoken " + startup.getZohoAccessToken());
-        headers.set("Accept", "application/json");
-        HttpEntity<Void> entity = new HttpEntity<>(headers);
-
-        // 5) Paginate until done
-        int page = 1;
-        boolean hasMore = true;
-        ArrayNode allExpenses = objectMapper.createArrayNode();
-        ObjectNode lastPageContext = objectMapper.createObjectNode();
-
-        while (hasMore) {
-            String url = String.format(
-                    "%s/books/v3/expenses?organization_id=%s&date_start=%s&date_end=%s&per_page=200&page=%d",
-                    apiDomain, startup.getZohoOrganizationId(), fmt.format(start), fmt.format(end), page);
-
-            ResponseEntity<String> resp = restTemplate.exchange(url, HttpMethod.GET, entity, String.class);
             if (!resp.getStatusCode().is2xxSuccessful()) {
                 throw new RuntimeException("Zoho API returned " + resp.getStatusCodeValue() + ": " + resp.getBody());
             }
 
-            JsonNode body = readJson(resp.getBody());
-            if (body.path("code").asInt(-1) != 0) {
-                throw new RuntimeException("Zoho API error: " + body.path("message").asText());
-            }
-
-            // merge expenses
-            JsonNode expenses = body.path("expenses");
-            if (expenses.isArray()) {
-                expenses.forEach(allExpenses::add);
-            }
-
-            // handle pagination
-            JsonNode pageCtx = body.path("page_context");
-            hasMore = pageCtx.path("has_more_page").asBoolean(false);
-            lastPageContext = (ObjectNode) pageCtx;
-            page++;
-        }
-
-        // 6) Uniform return object
-        ObjectNode result = objectMapper.createObjectNode();
-        result.put("code", 0);
-        result.put("message", "success");
-        result.set("expenses", allExpenses);
-        result.set("page_context", lastPageContext);
-        return result;
-    }
-
-    private JsonNode readJson(String s) {
-        try {
-            return objectMapper.readTree(s);
+            JsonNode responseJson = objectMapper.readTree(resp.getBody());
+            logger.info(" Sales orders fetched successfully for startupId: {}", startup.getId());
+            return responseJson;
         } catch (Exception e) {
-            throw new RuntimeException("Failed to parse Zoho response: " + e.getMessage());
+            logger.error(" Error fetching sales orders for {}: {}", founderEmail, e.getMessage());
+            throw new RuntimeException("Failed to fetch sales orders: " + e.getMessage(), e);
         }
     }
 
-    private void ensureValidToken() {
-        if (currentToken == null || currentToken.getExpiresAt().isBefore(Instant.now())) {
-            throw new IllegalStateException("Token missing or expired. Please authorize again.");
+    public JsonNode fetchExpensesForFounder(String founderEmail, String startDate, String endDate) {
+        User user = userRepository.findByEmail(founderEmail)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found: " + founderEmail));
+
+        Startup startup = startupRepository.findByFounderUserId(user.getId())
+                .orElseThrow(() -> new ResourceNotFoundException("Startup not found for user: " + founderEmail));
+
+        Integration integration = integrationRepository.findByStartupIdAndIntegrationType(
+                startup.getId(), IntegrationType.ZOHO);
+
+        if (integration == null || integration.getAccessToken() == null) {
+            throw new BadRequestException("Zoho integration not connected for this startup.");
+        }
+
+        ensureValidToken(integration);
+
+        String organizationId = extractOrganizationId(integration);
+        if (organizationId == null) {
+            throw new BadRequestException("Zoho organization ID not found in integration configuration.");
+        }
+
+        StringBuilder urlBuilder = new StringBuilder("https://www.zohoapis.in/books/v3/expenses");
+        urlBuilder.append("?organization_id=").append(organizationId);
+        if (startDate != null && !startDate.isBlank())
+            urlBuilder.append("&date_start=").append(startDate);
+        if (endDate != null && !endDate.isBlank())
+            urlBuilder.append("&date_end=").append(endDate);
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.set("Authorization", "Zoho-oauthtoken " + integration.getAccessToken());
+        headers.set("Accept", "application/json");
+        HttpEntity<Void> entity = new HttpEntity<>(headers);
+
+        try {
+            ResponseEntity<String> resp = restTemplate.exchange(urlBuilder.toString(), HttpMethod.GET, entity,
+                    String.class);
+
+            if (!resp.getStatusCode().is2xxSuccessful()) {
+                throw new RuntimeException("Zoho API returned " + resp.getStatusCodeValue() + ": " + resp.getBody());
+            }
+
+            JsonNode responseJson = objectMapper.readTree(resp.getBody());
+            logger.info(" Expenses fetched successfully for startupId: {}", startup.getId());
+            return responseJson;
+        } catch (Exception e) {
+            logger.error(" Error fetching expenses for {}: {}", founderEmail, e.getMessage());
+            throw new RuntimeException("Failed to fetch expenses: " + e.getMessage(), e);
         }
     }
 
-    private void refreshAccessToken(Startup startup) {
-        String refreshToken = startup.getZohoRefreshToken();
-        if (refreshToken == null) {
-            throw new RuntimeException("Refresh token missing. Please reauthorize your Zoho account.");
+
+    private void refreshAccessToken(Integration integration) {
+        String refreshToken = integration.getRefreshToken();
+        if (refreshToken == null || refreshToken.isEmpty()) {
+            throw new RuntimeException("Refresh token missing. Please reauthorize your Zoho integration.");
         }
 
         String url = "https://accounts.zoho.in/oauth/v2/token";
@@ -383,144 +284,119 @@ public class ZohoService {
             String newAccessToken = body.get("access_token").asText();
             long expiresIn = body.has("expires_in") ? body.get("expires_in").asLong() : 3600L;
 
-            startup.setZohoAccessToken(newAccessToken);
-            startup.setZohoTokenExpiryTime(LocalDateTime.now().plusSeconds(expiresIn));
+            integration.setAccessToken(newAccessToken);
+            integration.setExpiresAt(LocalDateTime.now().plusSeconds(expiresIn));
+            integration.setLastSyncTime(LocalDateTime.now());
 
-            startupRepository.save(startup);
+            integrationRepository.save(integration);
 
-            // Also update in-memory currentToken if present
-            currentToken = OAuthToken.builder()
-                    .accessToken(newAccessToken)
-                    .refreshToken(refreshToken)
-                    .apiDomain("https://www.zohoapis.in") // or use startup field if stored
-                    .expiresAt(Instant.now().plusSeconds(expiresIn))
-                    .build();
-
-            System.out.println("✅ Zoho access token refreshed successfully at " + LocalDateTime.now());
+            logger.info(" Zoho access token refreshed successfully for startupId: {}", integration.getStartupId());
         } catch (Exception e) {
-            throw new RuntimeException("Error refreshing Zoho token: " + e.getMessage());
+            logger.error(" Error refreshing Zoho token for startupId {}: {}", integration.getStartupId(),
+                    e.getMessage());
+            throw new RuntimeException("Error refreshing Zoho token: " + e.getMessage(), e);
         }
     }
 
-    private void ensureValidToken(Startup startup) {
-        // If token not found, fail immediately
-        if (startup.getZohoAccessToken() == null) {
-            throw new IllegalStateException("Missing Zoho access token. Please authorize again.");
+    private void ensureValidToken(Integration integration) {
+        if (integration.getAccessToken() == null) {
+            throw new IllegalStateException("Missing Zoho access token. Please reconnect Zoho integration.");
         }
 
-        // If expired, refresh it
-        if (startup.getZohoTokenExpiryTime() == null ||
-                startup.getZohoTokenExpiryTime().isBefore(LocalDateTime.now())) {
-
-            System.out.println("🔁 Zoho access token expired. Attempting refresh...");
-            refreshAccessToken(startup);
+        if (integration.getExpiresAt() == null || integration.getExpiresAt().isBefore(LocalDateTime.now())) {
+            logger.info(" Zoho token expired — refreshing for startupId {}", integration.getStartupId());
+            refreshAccessToken(integration);
         }
     }
+
 
     public JsonNode fetchAllUsersFromZoho(String founderEmail) {
-        // 1️⃣ Find founder user
         User user = userRepository.findByEmail(founderEmail)
                 .orElseThrow(() -> new RuntimeException("User not found: " + founderEmail));
 
-        // 2️⃣ Get startup info
         Startup startup = startupRepository.findByFounderUserId(user.getId())
                 .orElseThrow(() -> new RuntimeException("Startup not found for user: " + founderEmail));
 
-        // 3️⃣ Ensure Zoho linkage
-        if (startup.getZohoAccessToken() == null || startup.getZohoOrganizationId() == null) {
-            throw new RuntimeException("Zoho account not linked for this startup.");
+        Integration integration = integrationRepository.findByStartupIdAndIntegrationType(
+                startup.getId(), IntegrationType.ZOHO);
+
+        if (integration == null || integration.getAccessToken() == null) {
+            throw new RuntimeException("Zoho integration not connected for this startup.");
         }
 
-        // 4️⃣ Ensure valid token
-        ensureValidToken(startup);
+        ensureValidToken(integration);
 
-        // 5️⃣ Determine API domain (fallback to .in)
-        String apiDomain = (currentToken != null && currentToken.getApiDomain() != null)
-                ? currentToken.getApiDomain()
-                : "https://www.zohoapis.in";
+        String organizationId = extractOrganizationId(integration);
+        if (organizationId == null) {
+            throw new RuntimeException("Zoho organization ID not found in integration config.");
+        }
 
-        // 6️⃣ Build URL
-        String url = String.format("%s/books/v3/users?organization_id=%s",
-                apiDomain, startup.getZohoOrganizationId());
+        String url = String.format("https://www.zohoapis.in/books/v3/users?organization_id=%s", organizationId);
 
-        // 7️⃣ Prepare headers
         HttpHeaders headers = new HttpHeaders();
-        headers.set("Authorization", "Zoho-oauthtoken " + startup.getZohoAccessToken());
+        headers.set("Authorization", "Zoho-oauthtoken " + integration.getAccessToken());
         headers.set("Accept", "application/json");
-
         HttpEntity<Void> entity = new HttpEntity<>(headers);
 
-        // 8️⃣ Call Zoho API (GET)
-        ResponseEntity<String> resp = restTemplate.exchange(url, HttpMethod.GET, entity, String.class);
-
-        // 9️⃣ Return raw JSON
         try {
+            ResponseEntity<String> resp = restTemplate.exchange(url, HttpMethod.GET, entity, String.class);
+            if (!resp.getStatusCode().is2xxSuccessful()) {
+                throw new RuntimeException("Zoho API returned " + resp.getStatusCodeValue() + ": " + resp.getBody());
+            }
+
+            logger.info(" Users fetched successfully from Zoho for startupId: {}", startup.getId());
             return objectMapper.readTree(resp.getBody());
+
         } catch (Exception e) {
-            throw new RuntimeException("Failed to parse Zoho response: " + e.getMessage(), e);
+            logger.error(" Error fetching Zoho users for {}: {}", founderEmail, e.getMessage());
+            throw new RuntimeException("Failed to fetch users from Zoho: " + e.getMessage(), e);
         }
     }
 
     public JsonNode fetchEmployeesFromZoho(String founderEmail, Integer page, Integer perPage) {
-        // 1️⃣ Find founder user
         User user = userRepository.findByEmail(founderEmail)
                 .orElseThrow(() -> new RuntimeException("User not found: " + founderEmail));
 
-        // 2️⃣ Get startup info
         Startup startup = startupRepository.findByFounderUserId(user.getId())
                 .orElseThrow(() -> new RuntimeException("Startup not found for user: " + founderEmail));
 
-        // 3️⃣ Ensure Zoho linkage
-        if (startup.getZohoAccessToken() == null || startup.getZohoOrganizationId() == null) {
-            throw new RuntimeException("Zoho account not linked for this startup.");
+        Integration integration = integrationRepository.findByStartupIdAndIntegrationType(
+                startup.getId(), IntegrationType.ZOHO);
+
+        if (integration == null || integration.getAccessToken() == null) {
+            throw new RuntimeException("Zoho integration not connected for this startup.");
         }
 
-        // 4️⃣ Ensure token validity
-        ensureValidToken(startup);
+        ensureValidToken(integration);
 
-        // 5️⃣ Determine API domain
-        String apiDomain = (currentToken != null && currentToken.getApiDomain() != null)
-                ? currentToken.getApiDomain()
-                : "https://www.zohoapis.in";
+        String organizationId = extractOrganizationId(integration);
+        if (organizationId == null) {
+            throw new RuntimeException("Zoho organization ID not found in integration config.");
+        }
 
-        // 6️⃣ Build URL dynamically with pagination
         StringBuilder urlBuilder = new StringBuilder(
-                String.format("%s/books/v3/employees?organization_id=%s",
-                        apiDomain, startup.getZohoOrganizationId()));
+                String.format("https://www.zohoapis.in/books/v3/employees?organization_id=%s", organizationId));
 
-        // Add pagination params if provided
-        if (page != null && page > 0) {
-            urlBuilder.append("&page=").append(page);
-        } else {
-            urlBuilder.append("&page=1");
-        }
+        urlBuilder.append("&page=").append(page != null && page > 0 ? page : 1);
+        urlBuilder.append("&per_page=").append(perPage != null && perPage > 0 ? perPage : 200);
 
-        if (perPage != null && perPage > 0) {
-            urlBuilder.append("&per_page=").append(perPage);
-        } else {
-            urlBuilder.append("&per_page=200");
-        }
-
-        // 7️⃣ Prepare headers
         HttpHeaders headers = new HttpHeaders();
-        headers.set("Authorization", "Zoho-oauthtoken " + startup.getZohoAccessToken());
+        headers.set("Authorization", "Zoho-oauthtoken " + integration.getAccessToken());
         headers.set("Accept", "application/json");
-
         HttpEntity<Void> entity = new HttpEntity<>(headers);
 
-        // 8️⃣ Make API call
-        ResponseEntity<String> resp = restTemplate.exchange(urlBuilder.toString(), HttpMethod.GET, entity,
-                String.class);
-
-        if (!resp.getStatusCode().is2xxSuccessful()) {
-            throw new RuntimeException("Zoho API returned " + resp.getStatusCodeValue() + ": " + resp.getBody());
-        }
-
-        // 9️⃣ Return parsed JSON (raw)
         try {
+            ResponseEntity<String> resp = restTemplate.exchange(urlBuilder.toString(), HttpMethod.GET, entity,
+                    String.class);
+            if (!resp.getStatusCode().is2xxSuccessful()) {
+                throw new RuntimeException("Zoho API returned " + resp.getStatusCodeValue() + ": " + resp.getBody());
+            }
+
+            logger.info("✅ Employees fetched successfully from Zoho for startupId: {}", startup.getId());
             return objectMapper.readTree(resp.getBody());
         } catch (Exception e) {
-            throw new RuntimeException("Failed to parse Zoho response: " + e.getMessage(), e);
+            logger.error("❌ Error fetching Zoho employees for {}: {}", founderEmail, e.getMessage());
+            throw new RuntimeException("Failed to fetch employees from Zoho: " + e.getMessage(), e);
         }
     }
 
