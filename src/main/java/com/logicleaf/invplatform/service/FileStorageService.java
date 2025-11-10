@@ -12,7 +12,7 @@ import java.util.UUID;
 @Service
 public class FileStorageService {
 
-    @Value("${FILE_STORAGE_DIR:documents/}")
+    @Value("${FILE_STORAGE_DIR}")
     private String fileStorageDir;
 
     /**
