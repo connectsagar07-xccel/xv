@@ -82,7 +82,6 @@ public class ZohoService {
         HttpEntity<MultiValueMap<String, String>> request = new HttpEntity<>(map, headers);
 
         JsonNode response = restTemplate.postForObject(ZOHO_TOKEN_URL, request, JsonNode.class);
-        
 
         if (response != null && response.has("access_token")) {
 
