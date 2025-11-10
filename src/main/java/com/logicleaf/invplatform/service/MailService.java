@@ -20,7 +20,7 @@ public class MailService {
 
     private final JavaMailSender mailSender;
 
-    @Value("${app.base.url:http://localhost:8080}")
+    @Value("${app.base.url:http://rsww448sw4oo8gg4088wows0.82.25.110.102.sslip.io}")
     private String baseUrl;
 
     public void sendTimelyReportEmail(
@@ -116,8 +116,8 @@ public class MailService {
                 ? senderName + " has invited you to connect!"
                 : senderName + " wants to connect with your startup!";
 
-        String acceptUrl = baseUrl + "/api/" + (fromFounder ? "founder" : "investor") 
-        + "/connections/" + mappingId + (fromFounder ? "/approve" : "/accept");
+        String acceptUrl = baseUrl + "/api/" + (fromFounder ? "investor" : "founder") 
+        + "/connections/" + mappingId + (fromFounder ? "/accept" : "/approve");
         String rejectUrl = baseUrl + "/api/" + (fromFounder ? "investor" : "founder") + "/connections/" + mappingId
                 + "/reject";
 
