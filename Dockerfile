@@ -17,14 +17,20 @@ RUN mvn clean package -DskipTests
 # ---------- Stage 2: Run ----------
 FROM eclipse-temurin:21-jre-alpine AS runtime
 
-# Add a non-root user for security
+# 1. Add a non-root user for security
 RUN addgroup -S spring && adduser -S spring -G spring
-USER spring:spring
 
 WORKDIR /app
 
-# Copy jar from build stage
+# 2. Copy jar from build stage
 COPY --from=build /app/target/*.jar app.jar
+
+# 3. FIX: Create the upload directory and change its ownership to 'spring'.
+# This ensures the non-root user can write files here.
+RUN mkdir -p /app/file-uploads && chown spring:spring /app/file-uploads
+
+# 4. Switch to the non-root user
+USER spring:spring
 
 # Expose port (change if needed)
 EXPOSE 8080
