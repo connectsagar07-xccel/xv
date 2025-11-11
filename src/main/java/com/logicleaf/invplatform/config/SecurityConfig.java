@@ -65,7 +65,8 @@ public class SecurityConfig {
                             "/api/founder/connections/*/reject",
                             "/api/investor/connections/*/accept",
                             "/api/investor/connections/*/reject",
-                            "/api/zoho/callback"
+                            "/api/zoho/callback",
+                            "/api/document/download"
                     ).permitAll()
                     .anyRequest().authenticated()
             );

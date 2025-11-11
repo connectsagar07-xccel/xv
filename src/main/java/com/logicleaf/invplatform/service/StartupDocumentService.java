@@ -73,4 +73,21 @@ public class StartupDocumentService {
             return documentRepository.findByStartupId(startup.getId());
         }
     }
+
+    public void deleteDocument(String documentId) {
+        try {
+            // Find document by ID
+            StartupDocument document = documentRepository.findById(documentId)
+                    .orElseThrow(() -> new ResourceNotFoundException("No document found with ID: " + documentId));
+
+
+            fileStorageService.deleteFile(document.getDocumentName());
+
+            documentRepository.deleteById(documentId);
+
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to delete document: " + e.getMessage(), e);
+        }
+    }
+
 }

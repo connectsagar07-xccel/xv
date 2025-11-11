@@ -26,13 +26,13 @@ public class StartupController {
     private final StartupService startupService;
 
     /**
-     * Get complete investor info (User + Investor + Mapping) for logged-in founder's startup.
+     * Get complete investor info (User + Investor + Mapping) for logged-in
+     * founder's startup.
      */
     @GetMapping("/investors")
     public ResponseEntity<?> getFullInvestors(@AuthenticationPrincipal UserDetails userDetails) {
 
-        List<InvestorFullResponse> investors =
-                startupService.getFullInvestorDataForStartup(userDetails.getUsername());
+        List<InvestorFullResponse> investors = startupService.getFullInvestorDataForStartup(userDetails.getUsername());
 
         Map<String, Object> response = new HashMap<>();
         response.put("status", "success");
@@ -60,6 +60,19 @@ public class StartupController {
         response.put("message", "Document uploaded successfully.");
         response.put("data", uploaded);
 
+        return ResponseEntity.ok(response);
+    }
+
+    @DeleteMapping("/documents/{documentId}")
+    public ResponseEntity<?> deleteStartupDocument(
+            @AuthenticationPrincipal UserDetails userDetails,
+            @PathVariable String documentId) {
+
+        documentService.deleteDocument(documentId);
+
+        Map<String, Object> response = new HashMap<>();
+        response.put("status", "success");
+        response.put("message", "Document deleted successfully.");
         return ResponseEntity.ok(response);
     }
 
