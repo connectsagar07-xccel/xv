@@ -7,7 +7,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
-import java.time.format.TextStyle;
+import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
@@ -19,47 +19,54 @@ public class DashboardService {
         private ZohoService zohoService;
 
         public FounderDashboardResponse getFounderDashboardData(String founderEmail) {
-                // Get past 6 months range
                 LocalDate now = LocalDate.now();
+                LocalDate startDate = now.minusMonths(5).withDayOfMonth(1);
+                LocalDate endDate = now.withDayOfMonth(now.lengthOfMonth());
+
+                DateTimeFormatter dateFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd");
+                String startDateStr = startDate.format(dateFormatter);
+                String endDateStr = endDate.format(dateFormatter);
+
+                // Fetch Zoho data in one request each
+                JsonNode salesOrders = zohoService.fetchSalesOrdersForFounder(founderEmail, startDateStr, endDateStr);
+                JsonNode expenses = zohoService.fetchExpensesForFounder(founderEmail, startDateStr, endDateStr);
+
+                // Group by month (like "Jun", "Sep")
+                Map<String, Double> monthlyRevenueMap = groupByMonthShortName(salesOrders, "salesorders", "total");
+                Map<String, Double> monthlyExpenseMap = groupByMonthShortName(expenses, "expenses", "total");
+
                 List<LocalDate> last6Months = IntStream.rangeClosed(0, 5)
-                                .mapToObj(i -> now.minusMonths(5 - i))
+                                .mapToObj(i -> now.minusMonths(5 - i).withDayOfMonth(1))
                                 .collect(Collectors.toList());
 
                 List<MonthlyMetric> revenueData = new ArrayList<>();
                 List<MonthlyMetric> expenseData = new ArrayList<>();
                 List<MonthlyMetric> burnRateData = new ArrayList<>();
 
-                for (LocalDate month : last6Months) {
-                        int year = month.getYear();
-                        int m = month.getMonthValue();
+                DateTimeFormatter monthFormatter = DateTimeFormatter.ofPattern("MMM", Locale.ENGLISH);
 
-                        double monthlyRevenue = fetchMonthlyRevenue(founderEmail, year, m);
-                        double monthlyExpense = fetchMonthlyExpenses(founderEmail, year, m);
+                for (LocalDate monthStart : last6Months) {
+                        String monthKey = monthStart.format(monthFormatter);
+                        double monthlyRevenue = monthlyRevenueMap.getOrDefault(monthKey, 0.0);
+                        double monthlyExpense = monthlyExpenseMap.getOrDefault(monthKey, 0.0);
 
-                        // Compute net profit
                         double netProfit = monthlyRevenue - monthlyExpense;
-
-                        // Compute burn rate (if loss)
                         double burnRate = netProfit < 0 ? Math.abs(netProfit) : 0.0;
 
-                        String monthName = month.getMonth().getDisplayName(TextStyle.SHORT, Locale.ENGLISH);
-
-                        revenueData.add(new MonthlyMetric(monthName, monthlyRevenue));
-                        expenseData.add(new MonthlyMetric(monthName, monthlyExpense));
-                        burnRateData.add(new MonthlyMetric(monthName, burnRate));
+                        revenueData.add(new MonthlyMetric(monthKey, monthlyRevenue));
+                        expenseData.add(new MonthlyMetric(monthKey, monthlyExpense));
+                        burnRateData.add(new MonthlyMetric(monthKey, burnRate));
                 }
 
-                int cashRunwayMonths = (int) (14 + new Random().nextInt(3)); 
+                int cashRunwayMonths = (int) (14 + new Random().nextInt(3));
                 int teamSize = getZohoUserCount(founderEmail);
 
-                // KPI donut sample (mock)
                 Map<String, Double> kpi = new LinkedHashMap<>();
                 kpi.put("NPS", 30.0);
                 kpi.put("Churn", 2.0);
                 kpi.put("LTV", 35.0);
                 kpi.put("CAC", 10.0);
 
-                // Monthly goal progress (sample)
                 Map<String, Integer> goals = Map.of(
                                 "Revenue Target", 83,
                                 "Customer Acquisition", 67,
@@ -73,70 +80,33 @@ public class DashboardService {
                                 .monthlyGoalsProgress(goals)
                                 .teamSize(teamSize)
                                 .build();
-
         }
 
-        private double fetchMonthlyRevenue(String founderEmail, int year, int month) {
-                try {
-                        JsonNode sales = zohoService.fetchSalesOrdersForFounder(
-                                        founderEmail,
-                                        String.format("%04d-%02d-01", year, month),
-                                        String.format("%04d-%02d-%02d", year, month,
-                                                        LocalDate.of(year, month, 1).lengthOfMonth()));
-                        if (sales.has("salesorders")) {
-                                double total = 0.0;
-                                for (JsonNode order : sales.get("salesorders")) {
-                                        total += order.path("total").asDouble(0.0);
-                                }
-                                return total;
-                        }
-                } catch (Exception e) {
-                        System.out.println("⚠️ Using sample revenue for " + year + "-" + month);
-                }
-                // fallback data
-                return switch (month) {
-                        case 7 -> 6000.0;
-                        case 8 -> 7000.0;
-                        case 9 -> 8000.0;
-                        case 10 -> 9000.0;
-                        case 11 -> 10000.0;
-                        case 12 -> 11000.0;
-                        default -> 12000.5;
-                };
-        }
+        private Map<String, Double> groupByMonthShortName(JsonNode root, String arrayKey, String amountKey) {
+                Map<String, Double> monthMap = new HashMap<>();
+                if (root == null || !root.has(arrayKey))
+                        return monthMap;
 
-        private double fetchMonthlyExpenses(String founderEmail, int year, int month) {
-                try {
-                        JsonNode expenses = zohoService.fetchExpensesForFounder(
-                                        founderEmail,
-                                        String.format("%04d-%02d-01", year, month),
-                                        String.format("%04d-%02d-%02d", year, month,
-                                                        LocalDate.of(year, month, 1).lengthOfMonth()));
-                        if (expenses.has("expenses")) {
-                                double total = 0.0;
-                                for (JsonNode exp : expenses.get("expenses")) {
-                                        total += exp.path("total").asDouble(0.0);
+                DateTimeFormatter monthFormatter = DateTimeFormatter.ofPattern("MMM", Locale.ENGLISH);
+
+                for (JsonNode entry : root.get(arrayKey)) {
+                        if (entry.has("date") && entry.has(amountKey)) {
+                                String dateStr = entry.get("date").asText();
+                                double amount = entry.get(amountKey).asDouble(0.0);
+                                try {
+                                        LocalDate date = LocalDate.parse(dateStr);
+                                        String monthKey = date.format(monthFormatter);
+                                        monthMap.merge(monthKey, amount, Double::sum);
+                                } catch (Exception ignored) {
                                 }
-                                return total;
                         }
-                } catch (Exception e) {
-                        System.out.println("⚠️ Using sample expenses for " + year + "-" + month);
                 }
-                // fallback
-                return switch (month) {
-                        case 7 -> 10000.0;
-                        case 8 -> 9000.5;
-                        case 9 -> 9000.0;
-                        case 10 -> 8000.6;
-                        case 11 -> 8000.3;
-                        case 12 -> 8000.0;
-                        default -> 8000.2;
-                };
+                return monthMap;
         }
 
         public int getZohoUserCount(String founderEmail) {
                 // Call the raw Zoho API
-                JsonNode response = zohoService.fetchEmployeesFromZoho(founderEmail,1,200);
+                JsonNode response = zohoService.fetchEmployeesFromZoho(founderEmail, 1, 200);
 
                 // Extract users array
                 JsonNode users = response.path("employees");
