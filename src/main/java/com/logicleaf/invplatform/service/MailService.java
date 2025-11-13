@@ -20,7 +20,7 @@ public class MailService {
 
     private final JavaMailSender mailSender;
 
-    @Value("${REACT_BASE_URL:http://vkswkkgk0sgcgcgckk4oowos.82.25.110.102.sslip.io}")
+    @Value("${FRONTEND_URL:http://vkswkkgk0sgcgcgckk4oowos.82.25.110.102.sslip.io}")
     private String baseUrl;
 
     public void sendTimelyReportEmail(
