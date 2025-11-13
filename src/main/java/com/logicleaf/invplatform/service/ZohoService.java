@@ -252,7 +252,6 @@ public class ZohoService {
         }
     }
 
-
     private void refreshAccessToken(Integration integration) {
         String refreshToken = integration.getRefreshToken();
         if (refreshToken == null || refreshToken.isEmpty()) {
@@ -308,7 +307,6 @@ public class ZohoService {
             refreshAccessToken(integration);
         }
     }
-
 
     public JsonNode fetchAllUsersFromZoho(String founderEmail) {
         User user = userRepository.findByEmail(founderEmail)
@@ -397,6 +395,104 @@ public class ZohoService {
         } catch (Exception e) {
             logger.error("❌ Error fetching Zoho employees for {}: {}", founderEmail, e.getMessage());
             throw new RuntimeException("Failed to fetch employees from Zoho: " + e.getMessage(), e);
+        }
+    }
+
+    public JsonNode fetchAllBankAccountsForFounder(String founderEmail) {
+        User user = userRepository.findByEmail(founderEmail)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found: " + founderEmail));
+
+        Startup startup = startupRepository.findByFounderUserId(user.getId())
+                .orElseThrow(() -> new ResourceNotFoundException("Startup not found for user: " + founderEmail));
+
+        Integration integration = integrationRepository.findByStartupIdAndIntegrationType(
+                startup.getId(), IntegrationType.ZOHO);
+
+        if (integration == null || integration.getAccessToken() == null) {
+            throw new BadRequestException("Zoho integration not connected for this startup.");
+        }
+
+        ensureValidToken(integration);
+
+        String organizationId = extractOrganizationId(integration);
+        if (organizationId == null) {
+            throw new BadRequestException("Zoho organization ID not found in integration configuration.");
+        }
+
+        String url = String.format(
+                "https://www.zohoapis.in/books/v3/bankaccounts?organization_id=%s",
+                organizationId);
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.set("Authorization", "Zoho-oauthtoken " + integration.getAccessToken());
+        headers.set("Accept", "application/json");
+
+        HttpEntity<Void> entity = new HttpEntity<>(headers);
+
+        try {
+            ResponseEntity<String> response = restTemplate.exchange(url, HttpMethod.GET, entity, String.class);
+
+            if (!response.getStatusCode().is2xxSuccessful()) {
+                throw new RuntimeException(
+                        "Zoho API returned " + response.getStatusCodeValue() + ": " + response.getBody());
+            }
+
+            JsonNode responseJson = objectMapper.readTree(response.getBody());
+            logger.info("✅ All bank accounts fetched successfully for startupId: {}", startup.getId());
+            return responseJson;
+        } catch (Exception e) {
+            logger.error("❌ Error fetching all bank accounts for {}: {}", founderEmail, e.getMessage());
+            throw new RuntimeException("Failed to fetch all bank accounts: " + e.getMessage(), e);
+        }
+    }
+
+    public JsonNode fetchBankAccountDetailsForFounder(String founderEmail, String bankAccountId) {
+        User user = userRepository.findByEmail(founderEmail)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found: " + founderEmail));
+
+        Startup startup = startupRepository.findByFounderUserId(user.getId())
+                .orElseThrow(() -> new ResourceNotFoundException("Startup not found for user: " + founderEmail));
+
+        Integration integration = integrationRepository.findByStartupIdAndIntegrationType(
+                startup.getId(), IntegrationType.ZOHO);
+
+        if (integration == null || integration.getAccessToken() == null) {
+            throw new BadRequestException("Zoho integration not connected for this startup.");
+        }
+
+        ensureValidToken(integration);
+
+        String organizationId = extractOrganizationId(integration);
+        if (organizationId == null) {
+            throw new BadRequestException("Zoho organization ID not found in integration configuration.");
+        }
+
+        // ✅ Zoho Bank Account API Endpoint
+        String url = String.format(
+                "https://www.zohoapis.in/books/v3/bankaccounts/%s?organization_id=%s",
+                bankAccountId, organizationId);
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.set("Authorization", "Zoho-oauthtoken " + integration.getAccessToken());
+        headers.set("Accept", "application/json");
+
+        HttpEntity<Void> entity = new HttpEntity<>(headers);
+
+        try {
+            ResponseEntity<String> response = restTemplate.exchange(
+                    url, HttpMethod.GET, entity, String.class);
+
+            if (!response.getStatusCode().is2xxSuccessful()) {
+                throw new RuntimeException(
+                        "Zoho API returned " + response.getStatusCodeValue() + ": " + response.getBody());
+            }
+
+            JsonNode responseJson = objectMapper.readTree(response.getBody());
+            logger.info("✅ Bank account details fetched successfully for startupId: {}", startup.getId());
+            return responseJson;
+        } catch (Exception e) {
+            logger.error("❌ Error fetching bank account details for {}: {}", founderEmail, e.getMessage());
+            throw new RuntimeException("Failed to fetch bank account details: " + e.getMessage(), e);
         }
     }
 
