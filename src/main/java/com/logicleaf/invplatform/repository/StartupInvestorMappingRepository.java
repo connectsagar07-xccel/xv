@@ -11,4 +11,6 @@ public interface StartupInvestorMappingRepository extends MongoRepository<Startu
     List<StartupInvestorMapping> findByInvestorId(String investorId);
     Optional<StartupInvestorMapping> findByStartupIdAndInvestorId(String startupId, String investorId);
     List<StartupInvestorMapping> findByStartupIdAndStatus(String startupId, MappingStatus status);
+    Optional<StartupInvestorMapping> findByStartupIdAndInvestorEmail(String startupId, String investorEmail);
+    Optional<StartupInvestorMapping> findByIdAndInvestorEmail(String id, String investorEmail);
 }

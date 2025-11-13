@@ -15,39 +15,40 @@ import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequestMapping("/api/investor")
-
+@PreAuthorize("hasRole('INVESTOR')")
 public class InvestorController {
 
-    @Autowired
-    private ConnectionService connectionService;
+        @Autowired
+        private ConnectionService connectionService;
 
-    @PreAuthorize("hasRole('INVESTOR')")
-    @PostMapping("/connections/request")
-    public ResponseEntity<?> requestConnection(@AuthenticationPrincipal UserDetails userDetails,
-            @Valid @RequestBody ConnectStartupRequest request) {
-        connectionService.requestConnection(
-                userDetails.getUsername(),
-                request.getStartupId(),
-                request.getInvestorRole());
-        return ResponseEntity.ok(Map.of(
-                "status", "success",
-                "message", "Connection request sent successfully."));
-    }
+        @PostMapping("/connections/request")
+        public ResponseEntity<?> requestConnection(@AuthenticationPrincipal UserDetails userDetails,
+                        @Valid @RequestBody ConnectStartupRequest request) {
+                connectionService.requestConnection(
+                                userDetails.getUsername(),
+                                request.getStartupId(),
+                                request.getInvestorRole());
+                return ResponseEntity.ok(Map.of(
+                                "status", "success",
+                                "message", "Connection request sent successfully."));
+        }
 
-    @GetMapping("/connections/{mappingId}/accept")
-    public ResponseEntity<?> acceptInvitation(@PathVariable String mappingId) {
-        connectionService.acceptInvitation(mappingId);
-        return ResponseEntity.ok(Map.of(
-                "status", "success",
-                "message", "Invitation accepted successfully."));
-    }
+        @GetMapping("/connections/{mappingId}/accept")
+        public ResponseEntity<?> acceptInvitation(
+                        @AuthenticationPrincipal UserDetails userDetails,
+                        @PathVariable String mappingId) {
+                connectionService.acceptInvitation(mappingId, userDetails.getUsername()); // pass email
+                return ResponseEntity.ok(Map.of(
+                                "status", "success",
+                                "message", "Invitation accepted successfully."));
+        }
 
-    // PUBLIC: investor rejects founder invite (delete + email counterparty)
-    @GetMapping("/connections/{mappingId}/reject")
-    public ResponseEntity<?> rejectInvitation(@PathVariable String mappingId) {
-        connectionService.rejectByInvestor(mappingId);
-        return ResponseEntity.ok(Map.of(
-                "status", "success",
-                "message", "Invitation rejected and removed successfully."));
-    }
+        // PUBLIC: investor rejects founder invite (delete + email counterparty)
+        @GetMapping("/connections/{mappingId}/reject")
+        public ResponseEntity<?> rejectInvitation(@PathVariable String mappingId) {
+                connectionService.rejectByInvestor(mappingId);
+                return ResponseEntity.ok(Map.of(
+                                "status", "success",
+                                "message", "Invitation rejected and removed successfully."));
+        }
 }

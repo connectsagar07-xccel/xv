@@ -22,8 +22,9 @@ public class StartupInvestorMapping {
 
     private MappingStatus status;
 
-    // ✅ Added investor role field
     private InvestorRole investorRole;
+
+    private String investorEmail;
 
     
 }
