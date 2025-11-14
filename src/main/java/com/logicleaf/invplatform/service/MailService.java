@@ -117,9 +117,9 @@ public class MailService {
                 : senderName + " wants to connect with your startup!";
 
         String acceptUrl = baseUrl + "/" + (fromFounder ? "investor" : "founder") 
-        + "/connections/" + mappingId + (fromFounder ? "/accept" : "/approve");
+        + "/connections/" + mappingId + (fromFounder ? "?action=accept" : "?action=approve");
         String rejectUrl = baseUrl + "/" + (fromFounder ? "investor" : "founder") + "/connections/" + mappingId
-                + "/reject";
+                + "?action=reject";
 
         String html = """
                     <html>
