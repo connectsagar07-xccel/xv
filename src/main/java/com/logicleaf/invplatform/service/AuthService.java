@@ -55,6 +55,7 @@ public class AuthService {
                 .passwordHash(passwordEncoder.encode(signUpRequest.getPassword()))
                 .role(signUpRequest.getRole())
                 .isVerified(false)
+                .onboarded(false)
                 .build();
 
         String otp = generateOtp();
@@ -119,7 +120,8 @@ public class AuthService {
                 user.getEmail(),
                 user.getPhone(),
                 user.getRole().name(),
-                user.isVerified());
+                user.isVerified(),
+                user.isOnboarded());
 
         return new LoginResponse("success", "Login successful.", tokenResponse, userResponse);
     }

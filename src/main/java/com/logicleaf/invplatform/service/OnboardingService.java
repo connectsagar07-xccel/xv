@@ -45,7 +45,14 @@ public class OnboardingService {
                 .website(request.getWebsite())
                 .build();
 
-        return startupRepository.save(startup);
+        Startup saved = startupRepository.save(startup);
+
+        // 🔥 Mark onboarding as completed
+        user.setOnboarded(true);
+        userRepository.save(user);
+
+        return saved;
+
     }
 
     public Investor createInvestorProfile(String userEmail, InvestorProfileRequest request) {
@@ -65,6 +72,12 @@ public class OnboardingService {
                 .aum(request.getAum())
                 .build();
 
-        return investorRepository.save(investor);
+        Investor saved = investorRepository.save(investor);
+
+        // 🔥 Mark onboarding as completed
+        user.setOnboarded(true);
+        userRepository.save(user);
+
+        return saved;
     }
 }

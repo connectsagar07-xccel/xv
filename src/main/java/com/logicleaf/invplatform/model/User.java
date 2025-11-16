@@ -21,7 +21,8 @@ public class User {
     private String phone;
     private String passwordHash;
     private Role role;
-    private boolean isVerified; // To track if the user has completed OTP verification
+    private boolean isVerified;
+    private boolean onboarded; // To track if the user has completed OTP verification
     private String otp;
     private LocalDateTime otpExpiryTime;
     private String passwordResetToken;

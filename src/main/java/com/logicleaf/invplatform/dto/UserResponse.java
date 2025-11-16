@@ -14,4 +14,5 @@ public class UserResponse {
     private String phone;
     private String role;
     private boolean isVerified;
+    private boolean onboarded;
 }
