@@ -6,6 +6,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.mapping.Document;
+import java.time.LocalDateTime;
 
 @Data
 @Builder
@@ -22,5 +23,7 @@ public class User {
     private Role role;
     private boolean isVerified; // To track if the user has completed OTP verification
     private String otp;
-    private java.time.LocalDateTime otpExpiryTime;
+    private LocalDateTime otpExpiryTime;
+    private String passwordResetToken;
+    private LocalDateTime passwordResetTokenExpiryTime;
 }

@@ -2,6 +2,7 @@ package com.logicleaf.invplatform.service;
 
 import com.logicleaf.invplatform.dto.FounderProfileRequest;
 import com.logicleaf.invplatform.dto.InvestorProfileRequest;
+import com.logicleaf.invplatform.exception.BadRequestException;
 import com.logicleaf.invplatform.model.Investor;
 import com.logicleaf.invplatform.model.Startup;
 import com.logicleaf.invplatform.model.User;
@@ -29,7 +30,7 @@ public class OnboardingService {
                 .orElseThrow(() -> new UsernameNotFoundException("User not found with email: " + userEmail));
 
         if (startupRepository.findByFounderUserId(user.getId()).isPresent()) {
-            throw new RuntimeException("Founder profile already exists for this user.");
+            throw new BadRequestException("Founder profile already exists for this user.");
         }
 
         Startup startup = Startup.builder()
@@ -52,7 +53,7 @@ public class OnboardingService {
                 .orElseThrow(() -> new UsernameNotFoundException("User not found with email: " + userEmail));
 
         if (investorRepository.findByUserId(user.getId()).isPresent()) {
-            throw new RuntimeException("Investor profile already exists for this user.");
+            throw new BadRequestException("Investor profile already exists for this user.");
         }
 
         Investor investor = Investor.builder()

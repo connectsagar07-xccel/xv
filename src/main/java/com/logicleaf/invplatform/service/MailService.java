@@ -4,6 +4,8 @@ import com.logicleaf.invplatform.model.TimelyReport;
 import jakarta.mail.MessagingException;
 import jakarta.mail.internet.MimeMessage;
 import lombok.RequiredArgsConstructor;
+
+import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.stereotype.Service;
@@ -22,6 +24,9 @@ public class MailService {
 
     @Value("${FRONTEND_URL:http://vkswkkgk0sgcgcgckk4oowos.82.25.110.102.sslip.io}")
     private String baseUrl;
+
+    @Value("${spring.mail.username}")
+    private String applicationEmail;
 
     public void sendTimelyReportEmail(
             TimelyReport report,
@@ -242,5 +247,18 @@ public class MailService {
         } catch (Exception e) {
             System.err.println("❌ Failed to send connection status email: " + e.getMessage());
         }
+    }
+
+    public void sendPasswordResetEmail(String to, String token) {
+        String resetUrl = baseUrl + "/reset-password?token=" + token; 
+        String subject = "Password Reset Request";
+        String text = "To reset your password, click the link below:\n" + resetUrl;
+
+        SimpleMailMessage message = new SimpleMailMessage();
+        message.setFrom(applicationEmail);
+        message.setTo(to);
+        message.setSubject(subject);
+        message.setText(text);
+        mailSender.send(message);
     }
 }

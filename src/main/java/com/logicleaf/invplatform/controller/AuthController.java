@@ -54,4 +54,16 @@ public class AuthController {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid credentials.");
         }
     }
+
+    @PostMapping("/forgot-password")
+    public ResponseEntity<?> forgotPassword(@RequestBody ForgotPasswordDto forgotPasswordDto) {
+        authService.forgotPassword(forgotPasswordDto);
+        return ResponseEntity.ok(new ApiResponse("success", "Password reset link sent to your email."));
+    }
+
+    @PostMapping("/reset-password")
+    public ResponseEntity<?> resetPassword(@RequestBody ResetPasswordDto resetPasswordDto) {
+        authService.resetPassword(resetPasswordDto);
+        return ResponseEntity.ok(new ApiResponse("success", "Password has been reset successfully."));
+    }
 }

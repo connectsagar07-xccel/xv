@@ -1,6 +1,7 @@
 package com.logicleaf.invplatform.service;
 
 import com.logicleaf.invplatform.dto.*;
+import com.logicleaf.invplatform.exception.BadRequestException;
 import com.logicleaf.invplatform.model.User;
 import com.logicleaf.invplatform.repository.UserRepository;
 import com.logicleaf.invplatform.security.CustomUserDetails;
@@ -16,6 +17,7 @@ import org.springframework.stereotype.Service;
 import java.security.SecureRandom;
 import java.time.LocalDateTime;
 import java.util.Optional;
+import java.util.UUID;
 
 @Service
 public class AuthService {
@@ -34,6 +36,9 @@ public class AuthService {
 
     @Autowired
     private NotificationService notificationService;
+
+    @Autowired
+    private MailService mailService;
 
     public User registerUser(SignUpRequest signUpRequest) {
         Optional<User> existingUserOpt = userRepository.findByEmail(signUpRequest.getEmail());
@@ -124,5 +129,31 @@ public class AuthService {
         SecureRandom random = new SecureRandom();
         int num = random.nextInt(999999);
         return String.format("%06d", num);
+    }
+
+    public void forgotPassword(ForgotPasswordDto forgotPasswordDto) {
+        User user = userRepository.findByEmail(forgotPasswordDto.getEmail())
+                .orElseThrow(() -> new RuntimeException("User not found."));
+
+        String token = UUID.randomUUID().toString();
+        user.setPasswordResetToken(token);
+        user.setPasswordResetTokenExpiryTime(LocalDateTime.now().plusHours(1)); // Token valid for 1 hour
+        userRepository.save(user);
+
+        mailService.sendPasswordResetEmail(user.getEmail(), token);
+    }
+
+    public void resetPassword(ResetPasswordDto resetPasswordDto) {
+        User user = userRepository.findByPasswordResetToken(resetPasswordDto.getToken())
+                .orElseThrow(() -> new BadRequestException("Invalid password reset token."));
+
+        if (user.getPasswordResetTokenExpiryTime().isBefore(LocalDateTime.now())) {
+            throw new BadRequestException("Password reset token has expired.");
+        }
+
+        user.setPasswordHash(passwordEncoder.encode(resetPasswordDto.getNewPassword()));
+        user.setPasswordResetToken(null);
+        user.setPasswordResetTokenExpiryTime(null);
+        userRepository.save(user);
     }
 }
