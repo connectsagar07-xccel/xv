@@ -61,9 +61,7 @@ public class AuthService {
         String otp = generateOtp();
         newUser.setOtp(otp);
         newUser.setOtpExpiryTime(LocalDateTime.now().plusMinutes(10));
-        if(!existingUserOpt.isPresent()){
-            newUser = userRepository.save(newUser);
-        }   
+        newUser = userRepository.save(newUser);
         notificationService.sendOtp(newUser.getEmail(), otp);
         return newUser;
     }
